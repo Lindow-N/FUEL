@@ -5,12 +5,12 @@ import {
   signInAnonymously,
   onAuthStateChanged,
   type Auth,
-  type User,
 } from "firebase/auth";
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
+let cachedUid: string | null = null;
 
 function getFirebaseApp() {
   if (app) return app;
@@ -44,16 +44,34 @@ export function getAuthInstance(): Auth {
 }
 
 export async function ensureAuth(): Promise<string> {
+  if (cachedUid) return cachedUid;
+
   const authInstance = getAuthInstance();
+
+  if (authInstance.currentUser) {
+    cachedUid = authInstance.currentUser.uid;
+    return cachedUid;
+  }
+
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error("Auth timeout"));
+    }, 8000);
+
     const unsubscribe = onAuthStateChanged(authInstance, (user) => {
+      clearTimeout(timeout);
       unsubscribe();
       if (user) {
+        cachedUid = user.uid;
         resolve(user.uid);
         return;
       }
       signInAnonymously(authInstance)
-        .then((cred) => resolve(cred.user.uid))
+        .then((cred) => {
+          cachedUid = cred.user.uid;
+          resolve(cred.user.uid);
+        })
         .catch(reject);
     });
   });

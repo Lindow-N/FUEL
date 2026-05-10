@@ -2,32 +2,141 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Bot, User } from "lucide-react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
+import { FoodLog, WeightEntry, DailySummary, DAILY_TARGETS } from "@/lib/types";
+import * as firestore from "@/lib/firestore";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-const SYSTEM_PROMPT = `Tu es FUEL Coach, un assistant nutritionnel personnel expert et bienveillant. Tu aides l'utilisateur à :
-- Atteindre ses objectifs nutritionnels (2200 kcal/jour, 180g protéines)
-- Optimiser son alimentation
-- Répondre à ses questions sur la nutrition et la musculation
-- Donner des conseils pratiques et personnalisés
+function summarizeLogs(logs: FoodLog[]): string {
+  const byDay: Record<string, DailySummary & { meals: string[] }> = {};
 
-Réponds de manière concise et directe. Utilise le français. Tu peux utiliser quelques emojis pour rendre la conversation plus agréable.`;
+  for (const log of logs) {
+    const day = new Date(log.timestamp).toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+    if (!byDay[day]) {
+      byDay[day] = { calories: 0, protein: 0, carbs: 0, fat: 0, meals: [] };
+    }
+    byDay[day].calories += log.calories;
+    byDay[day].protein += log.protein;
+    byDay[day].carbs += log.carbs;
+    byDay[day].fat += log.fat;
+    byDay[day].meals.push(log.food);
+  }
+
+  return Object.entries(byDay)
+    .map(([date, s]) => {
+      const protPct = Math.round((s.protein / DAILY_TARGETS.protein) * 100);
+      const calStatus =
+        s.calories >= DAILY_TARGETS.calories
+          ? "✅"
+          : s.calories >= DAILY_TARGETS.calories * 0.8
+            ? "🟡"
+            : "🔴";
+      return `${date}: ${Math.round(s.calories)}/${DAILY_TARGETS.calories} kcal ${calStatus} | P:${Math.round(s.protein)}g (${protPct}%) | Repas: ${s.meals.join(", ")}`;
+    })
+    .join("\n");
+}
+
+function summarizeWeight(entries: WeightEntry[]): string {
+  if (entries.length === 0) return "Aucune donnée de poids.";
+  const latest = entries[entries.length - 1];
+  const oldest = entries[0];
+  const diff = latest.value - oldest.value;
+  const trend = diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+  const allWeights = entries.map((e) => `${e.date}: ${e.value}kg`).join(", ");
+  return `Dernier poids: ${latest.value}kg (${latest.date}) | Évolution: ${trend}kg sur la période | Historique: ${allWeights}`;
+}
+
+const BASE_PROMPT = `Tu es FUEL Coach, le coach nutrition personnel d'Anthony.
+
+PROFIL :
+- Anthony, 27 ans, QA Automation Engineer (sédentaire mais intense mentalement)
+- 90kg+, CrossFit + Haltérophilie haut volume (4-5x/semaine, focus Jerk/Squat)
+- Objectif : sèche intense → maintien masse musculaire et force
+- Cibles : ${DAILY_TARGETS.calories} kcal/jour, ${DAILY_TARGETS.protein}g protéines/jour (priorité absolue)
+
+PRÉFÉRENCES :
+- BANNI : courgettes et champignons (il déteste ça, ne jamais recommander)
+- Favoris : poulet, poisson blanc (colin), thon, haricots blancs, épinards
+- Satiété : konjac, pain de seigle (limiter si poids stagne)
+- Suppléments : whey, créatine
+- Habitudes : batch cooking, repas propres
+
+TON ET STYLE :
+- Ton "Peer-Engineer" : direct, technique, efficace, pas de bullshit
+- Parle en grammes, kcal, index glycémique, ratios macro
+- Sois concis : 3-5 phrases max par réponse sauf si demande détaillée
+- Français uniquement`;
 
 export default function CoachPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "Salut ! 👋 Je suis ton FUEL Coach. Pose-moi toutes tes questions sur la nutrition, les macros, ou tes objectifs. Je suis là pour t'aider !",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [contextData, setContextData] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [logs, weights] = await Promise.all([
+          firestore.getRecentLogs(7),
+          firestore.getWeightEntries(30),
+        ]);
+
+        const nutritionCtx =
+          logs.length > 0
+            ? `\n\nDONNÉES NUTRITION (7 derniers jours):\n${summarizeLogs(logs)}`
+            : "\n\nAucun repas loggé récemment.";
+
+        const weightCtx = `\n\nSUIVI POIDS (30 jours):\n${summarizeWeight(weights)}`;
+
+        const todayLogs = logs.filter((l) => {
+          const today = new Date().toISOString().split("T")[0];
+          return new Date(l.timestamp).toISOString().split("T")[0] === today;
+        });
+        const todayCtx =
+          todayLogs.length > 0
+            ? `\n\nAUJOURD'HUI: ${todayLogs.length} repas loggés → ${summarizeLogs(todayLogs)}`
+            : "\n\nAUJOURD'HUI: Aucun repas loggé pour le moment.";
+
+        const full = BASE_PROMPT + nutritionCtx + weightCtx + todayCtx;
+        setContextData(full);
+
+        const todaySummary = todayLogs.reduce(
+          (acc, l) => ({
+            calories: acc.calories + l.calories,
+            protein: acc.protein + l.protein,
+          }),
+          { calories: 0, protein: 0 },
+        );
+
+        setMessages([
+          {
+            role: "assistant",
+            content: `Anthony. ${todayLogs.length > 0 ? `Aujourd'hui: ${Math.round(todaySummary.calories)}/${DAILY_TARGETS.calories} kcal, ${Math.round(todaySummary.protein)}/${DAILY_TARGETS.protein}g protéines.` : "Aucun repas loggé aujourd'hui."} ${weights.length > 0 ? `Dernier poids: ${weights[weights.length - 1].value}kg.` : ""} Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g P. Go.`,
+          },
+        ]);
+      } catch {
+        setContextData(BASE_PROMPT);
+        setMessages([
+          {
+            role: "assistant",
+            content: `Anthony. Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g protéines. Je n'ai pas pu charger tes données. On y va quand même.`,
+          },
+        ]);
+      } finally {
+        setReady(true);
+      }
+    }
+    load();
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -45,24 +154,34 @@ export default function CoachPage() {
     setLoading(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const ai = new GoogleGenAI({
+        apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY!,
+      });
 
       const history = messages.map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
+        role: m.role === "assistant" ? "model" : ("user" as const),
         parts: [{ text: m.content }],
       }));
 
-      const chat = model.startChat({
-        history: [
-          { role: "user", parts: [{ text: "Contexte : " + SYSTEM_PROMPT }] },
-          { role: "model", parts: [{ text: "Compris, je suis FUEL Coach." }] },
-          ...history,
-        ],
+      const fullContents = [
+        { role: "user" as const, parts: [{ text: contextData }] },
+        {
+          role: "model" as const,
+          parts: [{ text: "Contexte chargé. J'ai tes données nutrition et poids en tête." }],
+        },
+        ...history,
+        { role: "user" as const, parts: [{ text: input.trim() }] },
+      ];
+
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: fullContents,
+        config: {
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       });
 
-      const result = await chat.sendMessage(input.trim());
-      const response = result.response.text();
+      const response = result.text ?? "";
 
       setMessages((prev) => [
         ...prev,
@@ -73,7 +192,7 @@ export default function CoachPage() {
         ...prev,
         {
           role: "assistant",
-          content: "Désolé, une erreur est survenue. Réessaie ! 🔄",
+          content: "Erreur. Réessaie.",
         },
       ]);
     } finally {
@@ -81,21 +200,24 @@ export default function CoachPage() {
     }
   };
 
+  if (!ready) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 size={24} className="animate-spin text-emerald-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-[calc(100dvh-8rem)] animate-fade-in">
       <header className="mb-4">
-        <h1 className="text-2xl font-bold text-white tracking-tight">
-          Coach
-        </h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight">Coach</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Ton assistant nutrition IA
+          Tes données sont en contexte
         </p>
       </header>
 
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-4 pb-4"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pb-4">
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -109,7 +231,7 @@ export default function CoachPage() {
               </div>
             )}
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-line ${
                 msg.role === "user"
                   ? "bg-emerald-600 text-white rounded-br-md"
                   : "bg-slate-800/80 text-slate-200 rounded-bl-md"

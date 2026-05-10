@@ -1,55 +1,77 @@
 "use client";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, type Content } from "@google/genai";
 import { GeminiResponse } from "@/lib/types";
 
-const SYSTEM_PROMPT = `Tu es un assistant nutritionnel ultra-précis. L'utilisateur va te décrire un repas ou t'envoyer une photo de nourriture.
+const USER_PROFILE = `
+PROFIL UTILISATEUR :
+- Anthony, 27 ans, QA Automation Engineer (travail sédentaire mais intense mentalement)
+- 90kg+, CrossFit + Haltérophilie haut volume (4-5 sessions/semaine, focus Jerk/Squat)
+- Objectif : sèche intense (perte de gras) tout en maintenant masse musculaire et force
+- Cibles : 2000 kcal/jour, priorité absolue protéines (180g/jour)
+- BANNI (déteste) : courgettes et champignons — ALERTER si détecté dans un repas
+- Favoris : poulet, poisson blanc (colin), thon, haricots blancs, épinards
+- Satiété : konjac et pain de seigle (limiter seigle si poids stagne)
+- Suppléments : whey et créatine
+- Habitudes : batch cooking, repas propres (ex: poulet sauce curry madras, riz BIO)
+`;
 
-Tu dois retourner UNIQUEMENT un JSON valide avec cette structure exacte, sans texte additionnel :
-{
-  "food": "nom court du plat en français",
-  "calories": nombre entier en kcal,
-  "protein": nombre en grammes (décimal possible),
-  "carbs": nombre en grammes (décimal possible),
-  "fat": nombre en grammes (décimal possible),
-  "analysis": "analyse courte en français (max 80 caractères) de la qualité nutritionnelle"
-}
+const SYSTEM_INSTRUCTION = `Tu es un parseur nutritionnel. ${USER_PROFILE}
 
-Sois réaliste dans les estimations. Si c'est une image, identifie les aliments visibles et estime les portions.`;
+RÈGLES ABSOLUES :
+- Tu DOIS TOUJOURS répondre UNIQUEMENT par un JSON valide, sans aucun autre texte.
+- MÊME SI l'input est invalide, incompréhensible ou vide, retourne quand même le JSON avec des estimations ou "Non identifié".
+- JAMAIS de texte avant ou après le JSON. JAMAIS d'explications.
+- Estime les portions pour un athlète de 90kg+ (NE SOUS-ESTIME PAS les protéines).
+- Si le repas contient des courgettes ou champignons, mentionne-le dans "analysis" avec ⚠️.
+
+Format de réponse OBLIGATOIRE (pas de markdown, pas de backticks) :
+{"food":"nom court du plat","calories":0,"protein":0,"carbs":0,"fat":0,"analysis":"analyse courte max 80 chars"}`;
+
+const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
 
 export async function analyzeFood(
   text: string,
   imageBase64?: string
 ): Promise<GeminiResponse> {
-  const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-  const parts: Array<
-    | { text: string }
-    | { inlineData: { mimeType: string; data: string } }
-  > = [];
-
-  parts.push({ text: SYSTEM_PROMPT });
+  const parts: Content["parts"] = [];
 
   if (imageBase64) {
-    parts.push({
-      inlineData: { mimeType: "image/jpeg", data: imageBase64 },
-    });
+    parts.push({ inlineData: { mimeType: "image/jpeg", data: imageBase64 } });
   }
 
   parts.push({
     text: text
-      ? `Description du repas : ${text}`
-      : "Analyse cette image et identifie les aliments.",
+      ? `Repas à analyser : ${text}`
+      : "Analyse cette image, identifie les aliments et estime les portions.",
   });
 
-  const result = await model.generateContent({
+  const config: Record<string, unknown> = {
+    systemInstruction: SYSTEM_INSTRUCTION,
+    thinkingConfig: { thinkingBudget: 0 },
+  };
+
+  if (!imageBase64) {
+    config.responseMimeType = "application/json";
+  }
+
+  const result = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
     contents: [{ role: "user", parts }],
+    config,
   });
-  const response = result.response.text();
 
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Impossible de parser la réponse IA");
+  const response = result.text ?? "";
 
-  return JSON.parse(jsonMatch[0]);
+  try {
+    return JSON.parse(response);
+  } catch {
+    const cleaned = response.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("[FUEL] No JSON in response:", response);
+      throw new Error("Impossible de parser la réponse IA");
+    }
+    return JSON.parse(jsonMatch[0]);
+  }
 }

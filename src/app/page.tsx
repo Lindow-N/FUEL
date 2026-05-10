@@ -8,27 +8,53 @@ import { AiInput } from "@/components/AiInput";
 import { FoodLog, DailySummary, DAILY_TARGETS } from "@/lib/types";
 import { analyzeFood } from "@/lib/gemini";
 import * as firestore from "@/lib/firestore";
-import { Flame } from "lucide-react";
+import { Flame, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+
+function toDateStr(d: Date) {
+  return d.toISOString().split("T")[0];
+}
 
 export default function Dashboard() {
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
+
+  const today = toDateStr(new Date());
+  const isToday = selectedDate === today;
 
   const fetchLogs = useCallback(async () => {
+    setFetching(true);
+    setError(null);
     try {
-      const data = await firestore.getDailyLogs();
+      const data = await firestore.getDailyLogs(selectedDate);
       setLogs(data);
     } catch (err) {
-      console.error(err);
+      console.error("[FUEL] fetchLogs error:", err);
+      setError("Erreur de chargement. Vérifie ta connexion.");
+      setLogs([]);
     } finally {
       setFetching(false);
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  const goBack = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(toDateStr(d));
+  };
+
+  const goForward = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    const next = toDateStr(d);
+    if (next <= today) setSelectedDate(next);
+  };
 
   const summary: DailySummary = logs.reduce(
     (acc, log) => ({
@@ -45,10 +71,9 @@ export default function Dashboard() {
     try {
       const data = await analyzeFood(text, imageBase64);
       const id = await firestore.addFoodLog(data);
-      setLogs((prev) => [
-        { id, ...data, timestamp: Date.now() },
-        ...prev,
-      ]);
+      if (isToday) {
+        setLogs((prev) => [{ id, ...data, timestamp: Date.now() }, ...prev]);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -65,10 +90,10 @@ export default function Dashboard() {
     }
   };
 
-  const today = new Date().toLocaleDateString("fr-FR", {
-    weekday: "long",
+  const displayDate = new Date(selectedDate).toLocaleDateString("fr-FR", {
+    weekday: "short",
     day: "numeric",
-    month: "long",
+    month: "short",
   });
 
   return (
@@ -78,7 +103,6 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-white tracking-tight">
             FUEL
           </h1>
-          <p className="text-xs text-slate-500 capitalize mt-0.5">{today}</p>
         </div>
         <div className="flex items-center gap-1.5 text-emerald-500">
           <Flame size={18} />
@@ -86,7 +110,34 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <AiInput onSubmit={handleAiSubmit} loading={loading} />
+      <div className="flex items-center justify-between bg-slate-900/60 rounded-xl px-2 py-1.5 border border-slate-800/50">
+        <button
+          onClick={goBack}
+          className="p-1.5 text-slate-400 hover:text-white transition-colors"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <button
+          onClick={() => setSelectedDate(today)}
+          className="text-sm font-medium text-slate-200 hover:text-emerald-400 transition-colors"
+        >
+          {displayDate}
+          {isToday && (
+            <span className="text-[10px] text-emerald-500 ml-1.5 uppercase font-semibold">
+              aujourd&apos;hui
+            </span>
+          )}
+        </button>
+        <button
+          onClick={goForward}
+          disabled={isToday}
+          className="p-1.5 text-slate-400 hover:text-white disabled:text-slate-700 disabled:opacity-40 transition-colors"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      {isToday && <AiInput onSubmit={handleAiSubmit} loading={loading} />}
 
       <div className="flex flex-col items-center py-4">
         <CircularProgress
@@ -121,14 +172,25 @@ export default function Dashboard() {
 
       <div>
         <h2 className="text-sm font-semibold text-slate-300 mb-3">
-          Repas du jour
+          Repas{!isToday ? ` — ${displayDate}` : " du jour"}
         </h2>
         {fetching ? (
           <div className="text-center py-6 text-slate-500 text-sm">
             Chargement...
           </div>
+        ) : error ? (
+          <div className="text-center py-6 space-y-2">
+            <p className="text-sm text-red-400">{error}</p>
+            <button
+              onClick={fetchLogs}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+            >
+              <RefreshCw size={12} />
+              Réessayer
+            </button>
+          </div>
         ) : (
-          <MealLog logs={logs} onDelete={handleDelete} />
+          <MealLog logs={logs} onDelete={isToday ? handleDelete : undefined} />
         )}
       </div>
     </div>

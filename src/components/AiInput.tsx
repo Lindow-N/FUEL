@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Camera, Send, Loader2, ImagePlus, X } from "lucide-react";
+import { Camera, Send, Loader2, ImageIcon, X } from "lucide-react";
 
 interface AiInputProps {
   onSubmit: (text: string, imageBase64?: string) => Promise<void>;
@@ -12,12 +12,10 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
@@ -27,10 +25,21 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
     reader.readAsDataURL(file);
   };
 
+  const handleCamera = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+    e.target.value = "";
+  };
+
+  const handleGallery = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+    e.target.value = "";
+  };
+
   const clearImage = () => {
     setImage(null);
     setPreview(null);
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const handleSubmit = async () => {
@@ -49,6 +58,22 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
 
   return (
     <div className="bg-slate-900/80 rounded-2xl border border-slate-800/50 overflow-hidden">
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCamera}
+        className="hidden"
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept="image/*"
+        onChange={handleGallery}
+        className="hidden"
+      />
+
       {preview && (
         <div className="relative p-2">
           <img
@@ -58,34 +83,35 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
           />
           <button
             onClick={clearImage}
-            className="absolute top-3 right-3 bg-slate-900/80 rounded-full p-1 text-white"
+            className="absolute top-3 right-3 bg-slate-900/80 rounded-full p-1.5 text-white"
           >
             <X size={14} />
           </button>
         </div>
       )}
-      <div className="flex items-end gap-2 p-3">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleImage}
-          className="hidden"
-        />
+
+      <div className="flex items-end gap-1 p-3">
         <button
-          onClick={() => fileRef.current?.click()}
+          onClick={() => cameraRef.current?.click()}
           className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+          title="Prendre une photo"
         >
-          {preview ? <Camera size={20} /> : <ImagePlus size={20} />}
+          <Camera size={20} />
+        </button>
+        <button
+          onClick={() => galleryRef.current?.click()}
+          className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+          title="Galerie"
+        >
+          <ImageIcon size={18} />
         </button>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Décrivez votre repas ou prenez une photo..."
+          placeholder="Décris ton repas..."
           rows={1}
-          className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 resize-none outline-none py-2 max-h-20"
+          className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 resize-none outline-none py-2 max-h-20 ml-1"
         />
         <button
           onClick={handleSubmit}

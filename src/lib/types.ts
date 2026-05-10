@@ -32,8 +32,8 @@ export interface GeminiResponse {
 }
 
 export const DAILY_TARGETS: DailySummary = {
-  calories: 2200,
+  calories: 2000,
   protein: 180,
-  carbs: 250,
-  fat: 70,
+  carbs: 220,
+  fat: 65,
 };

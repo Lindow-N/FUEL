@@ -5,7 +5,7 @@ import { Trash2, Clock } from "lucide-react";
 
 interface MealLogProps {
   logs: FoodLog[];
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 export function MealLog({ logs, onDelete }: MealLogProps) {
@@ -63,12 +63,14 @@ export function MealLog({ logs, onDelete }: MealLogProps) {
                 </p>
               )}
             </div>
-            <button
-              onClick={() => onDelete(log.id)}
-              className="p-1.5 text-slate-600 hover:text-red-400 transition-colors shrink-0"
-            >
-              <Trash2 size={14} />
-            </button>
+            {onDelete && (
+              <button
+                onClick={() => onDelete(log.id)}
+                className="p-1.5 text-slate-600 hover:text-red-400 transition-colors shrink-0"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
         );
       })}

@@ -56,16 +56,34 @@ export async function getWeightEntries(
   const userId = await ensureAuth();
   const since = new Date();
   since.setDate(since.getDate() - days);
-  const start = Timestamp.fromDate(since);
+  const sinceStr = since.toISOString().split("T")[0];
 
   const q = query(
     collection(db, "users", userId, "weightEntries"),
-    where("timestamp", ">=", start),
+    where("date", ">=", sinceStr),
     orderBy("date", "asc")
   );
 
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WeightEntry);
+}
+
+export async function getRecentLogs(days: number = 7): Promise<FoodLog[]> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  since.setHours(0, 0, 0, 0);
+  const start = Timestamp.fromDate(since);
+
+  const q = query(
+    collection(db, "users", userId, "dailyLogs"),
+    where("timestamp", ">=", start),
+    orderBy("timestamp", "desc")
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FoodLog);
 }
 
 export async function addWeightEntry(value: number): Promise<string> {
