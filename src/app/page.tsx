@@ -179,8 +179,6 @@ export default function Dashboard() {
         </button>
       )}
 
-      {isToday && <AiInput onSubmit={handleAiSubmit} loading={loading} />}
-
       <div className="flex flex-col items-center py-4">
         <CircularProgress
           value={summary.calories}
@@ -215,6 +213,8 @@ export default function Dashboard() {
       {isToday && <WeeklySummary />}
 
       {isToday && <MacroTrends />}
+
+      {isToday && <AiInput onSubmit={handleAiSubmit} loading={loading} />}
 
       <div>
         <h2 className="text-sm font-semibold text-slate-300 mb-3">
