@@ -4,7 +4,11 @@ import {
   getAuth,
   signInAnonymously,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  linkWithCredential,
   type Auth,
+  type User,
 } from "firebase/auth";
 
 let app: FirebaseApp | null = null;
@@ -75,4 +79,52 @@ export async function ensureAuth(): Promise<string> {
         .catch(reject);
     });
   });
+}
+
+const googleProvider = new GoogleAuthProvider();
+
+export async function signInWithGoogle(): Promise<User> {
+  const authInstance = getAuthInstance();
+  const currentUser = authInstance.currentUser;
+
+  // If user is anonymous, try to link with Google
+  if (currentUser && currentUser.isAnonymous) {
+    try {
+      const result = await signInWithPopup(authInstance, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential) {
+        // Link succeeded — same UID, data preserved
+        cachedUid = result.user.uid;
+        return result.user;
+      }
+    } catch (err: unknown) {
+      const error = err as { code?: string; customData?: { email?: string } };
+      // If account already exists, sign in directly (data from anon session stays orphaned but acceptable)
+      if (error.code === "auth/credential-already-in-use" || error.code === "auth/email-already-in-use") {
+        const result = await signInWithPopup(authInstance, googleProvider);
+        cachedUid = result.user.uid;
+        return result.user;
+      }
+      throw err;
+    }
+  }
+
+  // Direct Google sign-in
+  const result = await signInWithPopup(authInstance, googleProvider);
+  cachedUid = result.user.uid;
+  return result.user;
+}
+
+export function getCurrentUser(): User | null {
+  const authInstance = getAuthInstance();
+  return authInstance.currentUser;
+}
+
+export async function signOutUser(): Promise<void> {
+  const authInstance = getAuthInstance();
+  cachedUid = null;
+  await authInstance.signOut();
+  // Re-sign in anonymously
+  await signInAnonymously(authInstance);
+  cachedUid = authInstance.currentUser?.uid || null;
 }

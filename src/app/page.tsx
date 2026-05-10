@@ -6,6 +6,8 @@ import { MacroCard } from "@/components/MacroCard";
 import { MealLog } from "@/components/MealLog";
 import { AiInput } from "@/components/AiInput";
 import { Toast } from "@/components/Toast";
+import { WeeklySummary } from "@/components/WeeklySummary";
+import { MacroTrends } from "@/components/MacroTrends";
 import { FoodLog, DailySummary, DAILY_TARGETS } from "@/lib/types";
 import { analyzeFood } from "@/lib/gemini";
 import * as firestore from "@/lib/firestore";
@@ -101,6 +103,18 @@ export default function Dashboard() {
     }
   };
 
+  const handleDuplicate = async (log: FoodLog) => {
+    try {
+      const { id, timestamp, ...data } = log;
+      const newId = await firestore.addFoodLog(data);
+      setLogs((prev) => [{ id: newId, ...data, timestamp: Date.now() }, ...prev]);
+      setToast({ message: `${data.food} dupliqué`, type: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Erreur lors de la duplication", type: "error" });
+    }
+  };
+
   const displayDate = new Date(selectedDate).toLocaleDateString("fr-FR", {
     weekday: "short",
     day: "numeric",
@@ -156,6 +170,15 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {!isToday && (
+        <button
+          onClick={() => setSelectedDate(today)}
+          className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm font-semibold transition-colors"
+        >
+          ← Revenir à aujourd&apos;hui
+        </button>
+      )}
+
       {isToday && <AiInput onSubmit={handleAiSubmit} loading={loading} />}
 
       <div className="flex flex-col items-center py-4">
@@ -189,6 +212,10 @@ export default function Dashboard() {
         />
       </div>
 
+      {isToday && <WeeklySummary />}
+
+      {isToday && <MacroTrends />}
+
       <div>
         <h2 className="text-sm font-semibold text-slate-300 mb-3">
           Repas{!isToday ? ` — ${displayDate}` : " du jour"}
@@ -209,7 +236,7 @@ export default function Dashboard() {
             </button>
           </div>
         ) : (
-          <MealLog logs={logs} onDelete={isToday ? handleDelete : undefined} />
+          <MealLog logs={logs} onDelete={isToday ? handleDelete : undefined} onDuplicate={isToday ? handleDuplicate : undefined} />
         )}
       </div>
     </div>

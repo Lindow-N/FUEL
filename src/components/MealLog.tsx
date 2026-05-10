@@ -1,14 +1,15 @@
 "use client";
 
 import { FoodLog } from "@/lib/types";
-import { Trash2, Clock } from "lucide-react";
+import { Trash2, Clock, Copy } from "lucide-react";
 
 interface MealLogProps {
   logs: FoodLog[];
   onDelete?: (id: string) => void;
+  onDuplicate?: (log: FoodLog) => void;
 }
 
-export function MealLog({ logs, onDelete }: MealLogProps) {
+export function MealLog({ logs, onDelete, onDuplicate }: MealLogProps) {
   if (logs.length === 0) {
     return (
       <div className="text-center py-8 text-slate-500">
@@ -64,12 +65,23 @@ export function MealLog({ logs, onDelete }: MealLogProps) {
               )}
             </div>
             {onDelete && (
-              <button
-                onClick={() => onDelete(log.id)}
-                className="p-1.5 text-slate-600 hover:text-red-400 transition-colors shrink-0"
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="flex flex-col gap-1 shrink-0">
+                {onDuplicate && (
+                  <button
+                    onClick={() => onDuplicate(log)}
+                    className="p-1.5 text-slate-600 hover:text-emerald-400 transition-colors"
+                    title="Dupliquer"
+                  >
+                    <Copy size={14} />
+                  </button>
+                )}
+                <button
+                  onClick={() => onDelete(log.id)}
+                  className="p-1.5 text-slate-600 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             )}
           </div>
         );

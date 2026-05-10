@@ -2,12 +2,13 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Scale, MessageCircle } from "lucide-react";
+import { LayoutDashboard, Scale, MessageCircle, Settings } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/poids", label: "Poids", icon: Scale },
   { href: "/coach", label: "Coach", icon: MessageCircle },
+  { href: "/settings", label: "Réglages", icon: Settings },
 ];
 
 export function BottomNav() {
