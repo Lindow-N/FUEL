@@ -5,6 +5,7 @@ import { CircularProgress } from "@/components/CircularProgress";
 import { MacroCard } from "@/components/MacroCard";
 import { MealLog } from "@/components/MealLog";
 import { AiInput } from "@/components/AiInput";
+import { Toast } from "@/components/Toast";
 import { FoodLog, DailySummary, DAILY_TARGETS } from "@/lib/types";
 import { analyzeFood } from "@/lib/gemini";
 import * as firestore from "@/lib/firestore";
@@ -14,12 +15,18 @@ function toDateStr(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
+interface ToastData {
+  message: string;
+  type: "success" | "error";
+}
+
 export default function Dashboard() {
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
+  const [toast, setToast] = useState<ToastData | null>(null);
 
   const today = toDateStr(new Date());
   const isToday = selectedDate === today;
@@ -74,8 +81,10 @@ export default function Dashboard() {
       if (isToday) {
         setLogs((prev) => [{ id, ...data, timestamp: Date.now() }, ...prev]);
       }
+      setToast({ message: `${data.food} — ${data.calories} kcal loggé`, type: "success" });
     } catch (err) {
       console.error(err);
+      setToast({ message: "Erreur lors de l'analyse", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -85,8 +94,10 @@ export default function Dashboard() {
     try {
       await firestore.deleteFoodLog(id);
       setLogs((prev) => prev.filter((l) => l.id !== id));
+      setToast({ message: "Repas supprimé", type: "success" });
     } catch (err) {
       console.error(err);
+      setToast({ message: "Erreur lors de la suppression", type: "error" });
     }
   };
 
@@ -98,6 +109,14 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
