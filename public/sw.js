@@ -1,4 +1,4 @@
-const CACHE_NAME = "fuel-v1";
+const CACHE_NAME = "fuel-v2";
 const PRECACHE_URLS = ["/", "/poids", "/coach"];
 
 self.addEventListener("install", (event) => {

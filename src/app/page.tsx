@@ -66,10 +66,10 @@ export default function Dashboard() {
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
 
-  const handleAiSubmit = async (text: string, imageBase64?: string) => {
+  const handleAiSubmit = async (text: string, imageBase64?: string, imageMime?: string) => {
     setLoading(true);
     try {
-      const data = await analyzeFood(text, imageBase64);
+      const data = await analyzeFood(text, imageBase64, imageMime);
       const id = await firestore.addFoodLog(data);
       if (isToday) {
         setLogs((prev) => [{ id, ...data, timestamp: Date.now() }, ...prev]);

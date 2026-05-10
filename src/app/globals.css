@@ -45,11 +45,3 @@ input, textarea {
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
-
-@keyframes pulse-ring {
-  0% { stroke-dashoffset: 283; }
-}
-
-.animate-progress {
-  animation: pulse-ring 1s ease-out forwards;
-}

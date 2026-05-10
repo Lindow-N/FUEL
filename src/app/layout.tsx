@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/BottomNav";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -17,6 +18,10 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "FUEL",
+  },
+  icons: {
+    icon: "/icons/icon-192.png",
+    apple: "/icons/icon-512.png",
   },
 };
 
@@ -36,9 +41,11 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${inter.variable} dark`}>
       <body className="min-h-dvh flex flex-col bg-[#020617] text-slate-200 pb-20">
-        <main className="flex-1 max-w-lg mx-auto w-full px-4 pt-6">
-          {children}
-        </main>
+        <ErrorBoundary>
+          <main className="flex-1 max-w-lg mx-auto w-full px-4 pt-6">
+            {children}
+          </main>
+        </ErrorBoundary>
         <BottomNav />
         <ServiceWorkerRegistration />
       </body>

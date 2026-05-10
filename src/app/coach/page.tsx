@@ -3,7 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Bot, User } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
-import { FoodLog, WeightEntry, DailySummary, DAILY_TARGETS } from "@/lib/types";
+import {
+  FoodLog,
+  WeightEntry,
+  DailySummary,
+  DAILY_TARGETS,
+  USER_PROFILE,
+} from "@/lib/types";
 import * as firestore from "@/lib/firestore";
 
 interface Message {
@@ -53,26 +59,15 @@ function summarizeWeight(entries: WeightEntry[]): string {
   return `Dernier poids: ${latest.value}kg (${latest.date}) | Évolution: ${trend}kg sur la période | Historique: ${allWeights}`;
 }
 
-const BASE_PROMPT = `Tu es FUEL Coach, le coach nutrition personnel d'Anthony.
-
-PROFIL :
-- Anthony, 27 ans, QA Automation Engineer (sédentaire mais intense mentalement)
-- 90kg+, CrossFit + Haltérophilie haut volume (4-5x/semaine, focus Jerk/Squat)
-- Objectif : sèche intense → maintien masse musculaire et force
-- Cibles : ${DAILY_TARGETS.calories} kcal/jour, ${DAILY_TARGETS.protein}g protéines/jour (priorité absolue)
-
-PRÉFÉRENCES :
-- BANNI : courgettes et champignons (il déteste ça, ne jamais recommander)
-- Favoris : poulet, poisson blanc (colin), thon, haricots blancs, épinards
-- Satiété : konjac, pain de seigle (limiter si poids stagne)
-- Suppléments : whey, créatine
-- Habitudes : batch cooking, repas propres
+const BASE_PROMPT = `Tu es FUEL Coach, le coach nutrition personnel d'Anthony. ${USER_PROFILE}
 
 TON ET STYLE :
 - Ton "Peer-Engineer" : direct, technique, efficace, pas de bullshit
 - Parle en grammes, kcal, index glycémique, ratios macro
 - Sois concis : 3-5 phrases max par réponse sauf si demande détaillée
 - Français uniquement`;
+
+const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
 
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -154,10 +149,6 @@ export default function CoachPage() {
     setLoading(true);
 
     try {
-      const ai = new GoogleGenAI({
-        apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY!,
-      });
-
       const history = messages.map((m) => ({
         role: m.role === "assistant" ? "model" : ("user" as const),
         parts: [{ text: m.content }],

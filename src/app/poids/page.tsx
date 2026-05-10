@@ -29,12 +29,12 @@ export default function PoidsPage() {
 
   const handleSubmit = async () => {
     const numVal = parseFloat(value.replace(",", "."));
-    if (isNaN(numVal) || numVal <= 0) return;
+    if (isNaN(numVal) || numVal < 30 || numVal > 300) return;
 
     setLoading(true);
     try {
       const today = new Date().toISOString().split("T")[0];
-      const id = await firestore.addWeightEntry(numVal);
+      const id = await firestore.upsertWeightEntry(numVal);
       setEntries((prev) => {
         const filtered = prev.filter((e) => e.date !== today);
         return [...filtered, { id, date: today, value: numVal }].sort(

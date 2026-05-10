@@ -1,20 +1,7 @@
 "use client";
 
 import { GoogleGenAI, type Content } from "@google/genai";
-import { GeminiResponse } from "@/lib/types";
-
-const USER_PROFILE = `
-PROFIL UTILISATEUR :
-- Anthony, 27 ans, QA Automation Engineer (travail sédentaire mais intense mentalement)
-- 90kg+, CrossFit + Haltérophilie haut volume (4-5 sessions/semaine, focus Jerk/Squat)
-- Objectif : sèche intense (perte de gras) tout en maintenant masse musculaire et force
-- Cibles : 2000 kcal/jour, priorité absolue protéines (180g/jour)
-- BANNI (déteste) : courgettes et champignons — ALERTER si détecté dans un repas
-- Favoris : poulet, poisson blanc (colin), thon, haricots blancs, épinards
-- Satiété : konjac et pain de seigle (limiter seigle si poids stagne)
-- Suppléments : whey et créatine
-- Habitudes : batch cooking, repas propres (ex: poulet sauce curry madras, riz BIO)
-`;
+import { GeminiResponse, USER_PROFILE } from "@/lib/types";
 
 const SYSTEM_INSTRUCTION = `Tu es un parseur nutritionnel. ${USER_PROFILE}
 
@@ -32,12 +19,18 @@ const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
 
 export async function analyzeFood(
   text: string,
-  imageBase64?: string
+  imageBase64?: string,
+  imageMime?: string
 ): Promise<GeminiResponse> {
   const parts: Content["parts"] = [];
 
   if (imageBase64) {
-    parts.push({ inlineData: { mimeType: "image/jpeg", data: imageBase64 } });
+    parts.push({
+      inlineData: {
+        mimeType: imageMime || "image/jpeg",
+        data: imageBase64,
+      },
+    });
   }
 
   parts.push({
@@ -66,7 +59,10 @@ export async function analyzeFood(
   try {
     return JSON.parse(response);
   } catch {
-    const cleaned = response.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    const cleaned = response
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error("[FUEL] No JSON in response:", response);

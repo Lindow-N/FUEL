@@ -1,6 +1,7 @@
 import {
   collection,
   addDoc,
+  setDoc,
   deleteDoc,
   doc,
   getDocs,
@@ -11,6 +12,13 @@ import {
 } from "firebase/firestore";
 import { getDb, ensureAuth } from "./firebase";
 import { FoodLog, WeightEntry } from "./types";
+
+function toMillis(t: unknown): number {
+  if (t && typeof t === "object" && "toMillis" in (t as object)) {
+    return (t as Timestamp).toMillis();
+  }
+  return typeof t === "number" ? t : Date.now();
+}
 
 export async function getDailyLogs(date?: string): Promise<FoodLog[]> {
   const db = getDb();
@@ -28,7 +36,10 @@ export async function getDailyLogs(date?: string): Promise<FoodLog[]> {
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FoodLog);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return { id: d.id, ...data, timestamp: toMillis(data.timestamp) } as FoodLog;
+  });
 }
 
 export async function addFoodLog(
@@ -83,17 +94,22 @@ export async function getRecentLogs(days: number = 7): Promise<FoodLog[]> {
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FoodLog);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return { id: d.id, ...data, timestamp: toMillis(data.timestamp) } as FoodLog;
+  });
 }
 
-export async function addWeightEntry(value: number): Promise<string> {
+export async function upsertWeightEntry(value: number): Promise<string> {
   const db = getDb();
   const userId = await ensureAuth();
   const today = new Date().toISOString().split("T")[0];
-  const ref = await addDoc(collection(db, "users", userId, "weightEntries"), {
+  const docId = `w_${today}`;
+  const ref = doc(db, "users", userId, "weightEntries", docId);
+  await setDoc(ref, {
     date: today,
     value,
     timestamp: Timestamp.now(),
   });
-  return ref.id;
+  return docId;
 }

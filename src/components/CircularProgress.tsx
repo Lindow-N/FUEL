@@ -50,7 +50,7 @@ export function CircularProgress({
         </defs>
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-3xl font-bold text-white">{value}</span>
+        <span className="text-3xl font-bold text-white">{Math.round(value)}</span>
         <span className="text-xs text-slate-400 mt-0.5">
           / {max} kcal
         </span>

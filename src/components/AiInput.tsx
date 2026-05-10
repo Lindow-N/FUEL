@@ -4,18 +4,20 @@ import { useState, useRef } from "react";
 import { Camera, Send, Loader2, ImageIcon, X } from "lucide-react";
 
 interface AiInputProps {
-  onSubmit: (text: string, imageBase64?: string) => Promise<void>;
+  onSubmit: (text: string, imageBase64?: string, imageMime?: string) => Promise<void>;
   loading: boolean;
 }
 
 export function AiInput({ onSubmit, loading }: AiInputProps) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<string | null>(null);
+  const [imageMime, setImageMime] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
+    setImageMime(file.type || "image/jpeg");
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
@@ -39,12 +41,13 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
 
   const clearImage = () => {
     setImage(null);
+    setImageMime(null);
     setPreview(null);
   };
 
   const handleSubmit = async () => {
     if (!text.trim() && !image) return;
-    await onSubmit(text.trim(), image || undefined);
+    await onSubmit(text.trim(), image || undefined, imageMime || undefined);
     setText("");
     clearImage();
   };
@@ -73,7 +76,6 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
         onChange={handleGallery}
         className="hidden"
       />
-
       {preview && (
         <div className="relative p-2">
           <img
@@ -89,7 +91,6 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
           </button>
         </div>
       )}
-
       <div className="flex items-end gap-1 p-3">
         <button
           onClick={() => cameraRef.current?.click()}
