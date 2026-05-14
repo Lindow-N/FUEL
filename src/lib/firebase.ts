@@ -7,9 +7,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  linkWithRedirect,
   getRedirectResult,
-  signInWithCredential,
   type Auth,
   type User,
 } from "firebase/auth";
@@ -107,28 +105,14 @@ export async function handleRedirectResult(): Promise<SignInResult | null> {
     if (!result) return null;
 
     cachedUid = result.user.uid;
+    const anonUid = sessionStorage.getItem(ANON_UID_KEY);
+    sessionStorage.removeItem(ANON_UID_KEY);
+
+    if (anonUid && anonUid !== result.user.uid) {
+      return { user: result.user, migratedFrom: anonUid };
+    }
     return { user: result.user };
   } catch (err: unknown) {
-    const error = err as { code?: string; credential?: unknown };
-
-    if (
-      error.code === "auth/credential-already-in-use" ||
-      error.code === "auth/email-already-in-use"
-    ) {
-      const anonUid = sessionStorage.getItem(ANON_UID_KEY);
-      const credential = error.credential;
-
-      if (credential && anonUid) {
-        const result = await signInWithCredential(
-          authInstance,
-          credential as Parameters<typeof signInWithCredential>[1]
-        );
-        cachedUid = result.user.uid;
-        sessionStorage.removeItem(ANON_UID_KEY);
-        return { user: result.user, migratedFrom: anonUid };
-      }
-    }
-
     sessionStorage.removeItem(ANON_UID_KEY);
     throw err;
   }
@@ -143,8 +127,6 @@ export async function signInWithGoogle(): Promise<SignInResult> {
   if (isMobile()) {
     if (currentUser && currentUser.isAnonymous) {
       sessionStorage.setItem(ANON_UID_KEY, currentUser.uid);
-      await linkWithRedirect(currentUser, googleProvider);
-      return { user: currentUser };
     }
     await signInWithRedirect(authInstance, googleProvider);
     return { user: currentUser! };
