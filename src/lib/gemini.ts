@@ -55,7 +55,43 @@ export async function analyzeFood(
   });
 
   const response = result.text ?? "";
+  return parseGeminiResponse(response);
+}
 
+export async function refineFood(
+  existing: { food: string; calories: number; protein: number; carbs: number; fat: number; analysis: string },
+  correction: string
+): Promise<GeminiResponse> {
+  const parts: Content["parts"] = [];
+  parts.push({
+    text: `Repas existant à corriger :
+- Nom : ${existing.food}
+- Calories : ${existing.calories}
+- Protéines : ${existing.protein}g
+- Glucides : ${existing.carbs}g
+- Lipides : ${existing.fat}g
+- Analyse : ${existing.analysis}
+
+Correction de l'utilisateur : ${correction}
+
+Recalcule les valeurs nutritionnelles en tenant compte de cette correction.`,
+  });
+
+  const result = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [{ role: "user", parts }],
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      thinkingConfig: { thinkingBudget: 0 },
+      responseMimeType: "application/json",
+    },
+  });
+
+  const response = result.text ?? "";
+  return parseGeminiResponse(response);
+}
+
+function parseGeminiResponse(response: string): GeminiResponse {
   try {
     return JSON.parse(response);
   } catch {

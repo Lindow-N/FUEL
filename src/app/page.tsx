@@ -6,10 +6,8 @@ import { MacroCard } from "@/components/MacroCard";
 import { MealLog } from "@/components/MealLog";
 import { AiInput } from "@/components/AiInput";
 import { Toast } from "@/components/Toast";
-import { WeeklySummary } from "@/components/WeeklySummary";
-import { MacroTrends } from "@/components/MacroTrends";
 import { FoodLog, DailySummary, DAILY_TARGETS } from "@/lib/types";
-import { analyzeFood } from "@/lib/gemini";
+import { analyzeFood, refineFood } from "@/lib/gemini";
 import * as firestore from "@/lib/firestore";
 import { Flame, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
@@ -25,6 +23,7 @@ interface ToastData {
 export default function Dashboard() {
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
@@ -112,6 +111,23 @@ export default function Dashboard() {
     } catch (err) {
       console.error(err);
       setToast({ message: "Erreur lors de la duplication", type: "error" });
+    }
+  };
+
+  const handleEdit = async (log: FoodLog, correction: string) => {
+    setEditLoading(true);
+    try {
+      const data = await refineFood(log, correction);
+      await firestore.updateFoodLog(log.id, data);
+      setLogs((prev) =>
+        prev.map((l) => (l.id === log.id ? { ...l, ...data } : l))
+      );
+      setToast({ message: `${data.food} — corrigé`, type: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Erreur lors de la correction", type: "error" });
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -210,10 +226,6 @@ export default function Dashboard() {
         />
       </div>
 
-      {isToday && <WeeklySummary />}
-
-      {isToday && <MacroTrends />}
-
       {isToday && <AiInput onSubmit={handleAiSubmit} loading={loading} />}
 
       <div>
@@ -236,7 +248,13 @@ export default function Dashboard() {
             </button>
           </div>
         ) : (
-          <MealLog logs={logs} onDelete={isToday ? handleDelete : undefined} onDuplicate={isToday ? handleDuplicate : undefined} />
+          <MealLog
+            logs={logs}
+            onDelete={isToday ? handleDelete : undefined}
+            onDuplicate={isToday ? handleDuplicate : undefined}
+            onEdit={isToday ? handleEdit : undefined}
+            editLoading={editLoading}
+          />
         )}
       </div>
     </div>

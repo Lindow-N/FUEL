@@ -3,6 +3,7 @@ import {
   addDoc,
   setDoc,
   deleteDoc,
+  updateDoc,
   doc,
   getDocs,
   query,
@@ -52,6 +53,15 @@ export async function addFoodLog(
     timestamp: Timestamp.now(),
   });
   return ref.id;
+}
+
+export async function updateFoodLog(
+  logId: string,
+  data: Partial<Omit<FoodLog, "id" | "timestamp">>
+): Promise<void> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  await updateDoc(doc(db, "users", userId, "dailyLogs", logId), data);
 }
 
 export async function deleteFoodLog(logId: string): Promise<void> {
@@ -112,4 +122,18 @@ export async function upsertWeightEntry(value: number): Promise<string> {
     timestamp: Timestamp.now(),
   });
   return docId;
+}
+
+export async function migrateUserData(fromUid: string, toUid: string): Promise<void> {
+  const db = getDb();
+
+  const logsSnap = await getDocs(collection(db, "users", fromUid, "dailyLogs"));
+  for (const d of logsSnap.docs) {
+    await addDoc(collection(db, "users", toUid, "dailyLogs"), d.data());
+  }
+
+  const weightSnap = await getDocs(collection(db, "users", fromUid, "weightEntries"));
+  for (const d of weightSnap.docs) {
+    await setDoc(doc(db, "users", toUid, "weightEntries", d.id), d.data());
+  }
 }

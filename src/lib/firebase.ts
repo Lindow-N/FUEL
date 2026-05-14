@@ -6,7 +6,10 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
-  linkWithCredential,
+  signInWithRedirect,
+  linkWithRedirect,
+  getRedirectResult,
+  signInWithCredential,
   type Auth,
   type User,
 } from "firebase/auth";
@@ -15,6 +18,8 @@ let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
 let cachedUid: string | null = null;
+
+const ANON_UID_KEY = "fuel_anon_uid";
 
 function getFirebaseApp() {
   if (app) return app;
@@ -81,38 +86,90 @@ export async function ensureAuth(): Promise<string> {
   });
 }
 
+function isMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent);
+}
+
+export interface SignInResult {
+  user: User;
+  migratedFrom?: string;
+}
+
+export async function handleRedirectResult(): Promise<SignInResult | null> {
+  const authInstance = getAuthInstance();
+
+  try {
+    const result = await getRedirectResult(authInstance);
+    if (!result) return null;
+
+    cachedUid = result.user.uid;
+    return { user: result.user };
+  } catch (err: unknown) {
+    const error = err as { code?: string; credential?: unknown };
+
+    if (
+      error.code === "auth/credential-already-in-use" ||
+      error.code === "auth/email-already-in-use"
+    ) {
+      const anonUid = sessionStorage.getItem(ANON_UID_KEY);
+      const credential = error.credential;
+
+      if (credential && anonUid) {
+        const result = await signInWithCredential(
+          authInstance,
+          credential as Parameters<typeof signInWithCredential>[1]
+        );
+        cachedUid = result.user.uid;
+        sessionStorage.removeItem(ANON_UID_KEY);
+        return { user: result.user, migratedFrom: anonUid };
+      }
+    }
+
+    sessionStorage.removeItem(ANON_UID_KEY);
+    throw err;
+  }
+}
+
 const googleProvider = new GoogleAuthProvider();
 
-export async function signInWithGoogle(): Promise<User> {
+export async function signInWithGoogle(): Promise<SignInResult> {
   const authInstance = getAuthInstance();
   const currentUser = authInstance.currentUser;
 
-  // If user is anonymous, try to link with Google
+  if (isMobile()) {
+    if (currentUser && currentUser.isAnonymous) {
+      sessionStorage.setItem(ANON_UID_KEY, currentUser.uid);
+      await linkWithRedirect(currentUser, googleProvider);
+      return { user: currentUser };
+    }
+    await signInWithRedirect(authInstance, googleProvider);
+    return { user: currentUser! };
+  }
+
   if (currentUser && currentUser.isAnonymous) {
     try {
       const result = await signInWithPopup(authInstance, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential) {
-        // Link succeeded — same UID, data preserved
-        cachedUid = result.user.uid;
-        return result.user;
-      }
+      cachedUid = result.user.uid;
+      return { user: result.user };
     } catch (err: unknown) {
-      const error = err as { code?: string; customData?: { email?: string } };
-      // If account already exists, sign in directly (data from anon session stays orphaned but acceptable)
-      if (error.code === "auth/credential-already-in-use" || error.code === "auth/email-already-in-use") {
+      const error = err as { code?: string };
+      if (
+        error.code === "auth/credential-already-in-use" ||
+        error.code === "auth/email-already-in-use"
+      ) {
+        const anonUid = currentUser.uid;
         const result = await signInWithPopup(authInstance, googleProvider);
         cachedUid = result.user.uid;
-        return result.user;
+        return { user: result.user, migratedFrom: anonUid };
       }
       throw err;
     }
   }
 
-  // Direct Google sign-in
   const result = await signInWithPopup(authInstance, googleProvider);
   cachedUid = result.user.uid;
-  return result.user;
+  return { user: result.user };
 }
 
 export function getCurrentUser(): User | null {
@@ -124,7 +181,6 @@ export async function signOutUser(): Promise<void> {
   const authInstance = getAuthInstance();
   cachedUid = null;
   await authInstance.signOut();
-  // Re-sign in anonymously
   await signInAnonymously(authInstance);
   cachedUid = authInstance.currentUser?.uid || null;
 }

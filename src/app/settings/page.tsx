@@ -1,27 +1,50 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signInWithGoogle, getCurrentUser, signOutUser } from "@/lib/firebase";
+import { signInWithGoogle, getCurrentUser, signOutUser, handleRedirectResult, type SignInResult } from "@/lib/firebase";
 import * as firestore from "@/lib/firestore";
 import { mealsToCSV, weightToCSV, downloadCSV } from "@/lib/csv";
 import { User } from "firebase/auth";
-import { LogIn, LogOut, Shield, User as UserIcon, Download } from "lucide-react";
+import { LogIn, LogOut, Shield, User as UserIcon, Download, Loader2 } from "lucide-react";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
 
   useEffect(() => {
     setUser(getCurrentUser());
+
+    (async () => {
+      try {
+        const result: SignInResult | null = await handleRedirectResult();
+        if (!result) return;
+
+        if (result.migratedFrom) {
+          setMigrating(true);
+          await firestore.migrateUserData(result.migratedFrom, result.user.uid);
+          setMigrating(false);
+        }
+        setUser(result.user);
+      } catch (err) {
+        console.error("[FUEL] Redirect result error:", err);
+        setError("Erreur de connexion Google");
+      }
+    })();
   }, []);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
     try {
-      const u = await signInWithGoogle();
-      setUser(u);
+      const result = await signInWithGoogle();
+      if (result.migratedFrom) {
+        setMigrating(true);
+        await firestore.migrateUserData(result.migratedFrom, result.user.uid);
+        setMigrating(false);
+      }
+      setUser(result.user);
     } catch (err) {
       console.error("[FUEL] Google sign-in error:", err);
       setError("Erreur de connexion Google");
@@ -43,6 +66,16 @@ export default function SettingsPage() {
   };
 
   const isAnonymous = user?.isAnonymous ?? true;
+
+  if (migrating) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+        <Loader2 size={32} className="animate-spin text-emerald-500 mb-4" />
+        <p className="text-sm text-slate-300 font-medium">Migration de tes données...</p>
+        <p className="text-xs text-slate-500 mt-1">Ne ferme pas l&apos;app</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -77,7 +110,7 @@ export default function SettingsPage() {
               <Shield size={16} className="text-amber-400 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-300/80">
                 En mode anonyme, tes données sont liées à cet appareil uniquement. 
-                Connecte-toi avec Google pour les sauvegarder définitivement.
+                Connecte-toi avec Google pour les sauvegarder. Tes repas existants seront migrés automatiquement.
               </p>
             </div>
             <button
