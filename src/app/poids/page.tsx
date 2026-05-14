@@ -12,6 +12,7 @@ export default function PoidsPage() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -120,12 +121,25 @@ export default function PoidsPage() {
         </div>
       )}
 
+      <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50">
+        <h2 className="text-sm font-semibold text-slate-300 mb-2">
+          Courbe de poids
+        </h2>
+        {fetching ? (
+          <div className="text-center py-8 text-slate-500 text-sm">
+            Chargement...
+          </div>
+        ) : (
+          <WeightChart entries={entries} />
+        )}
+      </div>
+
       {entries.length > 0 && (
         <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50 space-y-2">
           <h2 className="text-sm font-semibold text-slate-300 mb-2">
             Historique
           </h2>
-          {[...entries].reverse().map((entry) => (
+          {[...entries].reverse().slice(0, showAll ? undefined : 5).map((entry) => (
             <div
               key={entry.id}
               className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-800/40 transition-colors"
@@ -148,21 +162,16 @@ export default function PoidsPage() {
               </button>
             </div>
           ))}
+          {entries.length > 5 && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="w-full text-center text-xs text-slate-400 hover:text-emerald-400 py-2 transition-colors"
+            >
+              {showAll ? "Voir moins" : `Voir tout (${entries.length})`}
+            </button>
+          )}
         </div>
       )}
-
-      <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50">
-        <h2 className="text-sm font-semibold text-slate-300 mb-2">
-          Courbe de poids
-        </h2>
-        {fetching ? (
-          <div className="text-center py-8 text-slate-500 text-sm">
-            Chargement...
-          </div>
-        ) : (
-          <WeightChart entries={entries} />
-        )}
-      </div>
     </div>
   );
 }
