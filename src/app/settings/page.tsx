@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signInWithGoogle, getCurrentUser, signOutUser, handleRedirectResult, getAuthErrorMessage, type SignInResult } from "@/lib/firebase";
+import { signInWithGoogle, getCurrentUser, signOutUser, handleRedirectResult, getAuthErrorMessage, getAuthInstance, type SignInResult } from "@/lib/firebase";
 import * as firestore from "@/lib/firestore";
 import { mealsToCSV, weightToCSV, downloadCSV } from "@/lib/csv";
-import { User } from "firebase/auth";
+import { User, onAuthStateChanged } from "firebase/auth";
 import { LogIn, LogOut, Shield, User as UserIcon, Download, Loader2, AlertCircle } from "lucide-react";
 
 export default function SettingsPage() {
@@ -30,6 +30,10 @@ export default function SettingsPage() {
   useEffect(() => {
     setUser(getCurrentUser());
 
+    const unsubscribe = onAuthStateChanged(getAuthInstance(), (u) => {
+      if (u) setUser(u);
+    });
+
     (async () => {
       try {
         const result = await handleRedirectResult();
@@ -39,6 +43,8 @@ export default function SettingsPage() {
         setError(getAuthErrorMessage(err));
       }
     })();
+
+    return () => unsubscribe();
   }, []);
 
   const handleGoogleSignIn = async () => {
