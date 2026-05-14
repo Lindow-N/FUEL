@@ -22,14 +22,7 @@ export interface DailySummary {
   fat: number;
 }
 
-export interface GeminiResponse {
-  food: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  analysis: string;
-}
+export type GeminiResponse = Omit<FoodLog, "id" | "timestamp">;
 
 export const DAILY_TARGETS: DailySummary = {
   calories: 2000,

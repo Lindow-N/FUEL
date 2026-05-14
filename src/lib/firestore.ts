@@ -21,6 +21,27 @@ function toMillis(t: unknown): number {
   return typeof t === "number" ? t : Date.now();
 }
 
+function validateFoodLog(data: Record<string, unknown>, id: string): FoodLog {
+  return {
+    id,
+    food: String(data.food ?? "Inconnu"),
+    calories: Number(data.calories) || 0,
+    protein: Number(data.protein) || 0,
+    carbs: Number(data.carbs) || 0,
+    fat: Number(data.fat) || 0,
+    analysis: String(data.analysis ?? ""),
+    timestamp: toMillis(data.timestamp),
+  };
+}
+
+function validateWeightEntry(data: Record<string, unknown>, id: string): WeightEntry {
+  return {
+    id,
+    date: String(data.date ?? ""),
+    value: Number(data.value) || 0,
+  };
+}
+
 export async function getDailyLogs(date?: string): Promise<FoodLog[]> {
   const db = getDb();
   const userId = await ensureAuth();
@@ -37,10 +58,7 @@ export async function getDailyLogs(date?: string): Promise<FoodLog[]> {
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return { id: d.id, ...data, timestamp: toMillis(data.timestamp) } as FoodLog;
-  });
+  return snap.docs.map((d) => validateFoodLog(d.data(), d.id));
 }
 
 export async function addFoodLog(
@@ -70,6 +88,12 @@ export async function deleteFoodLog(logId: string): Promise<void> {
   await deleteDoc(doc(db, "users", userId, "dailyLogs", logId));
 }
 
+export async function deleteWeightEntry(entryId: string): Promise<void> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  await deleteDoc(doc(db, "users", userId, "weightEntries", entryId));
+}
+
 export async function getWeightEntries(
   days: number = 30
 ): Promise<WeightEntry[]> {
@@ -86,7 +110,7 @@ export async function getWeightEntries(
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WeightEntry);
+  return snap.docs.map((d) => validateWeightEntry(d.data(), d.id));
 }
 
 export async function getRecentLogs(days: number = 7): Promise<FoodLog[]> {
@@ -104,10 +128,7 @@ export async function getRecentLogs(days: number = 7): Promise<FoodLog[]> {
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return { id: d.id, ...data, timestamp: toMillis(data.timestamp) } as FoodLog;
-  });
+  return snap.docs.map((d) => validateFoodLog(d.data(), d.id));
 }
 
 export async function upsertWeightEntry(value: number): Promise<string> {

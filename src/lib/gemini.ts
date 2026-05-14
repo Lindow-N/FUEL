@@ -15,13 +15,33 @@ RÈGLES ABSOLUES :
 Format de réponse OBLIGATOIRE (pas de markdown, pas de backticks) :
 {"food":"nom court du plat","calories":0,"protein":0,"carbs":0,"fat":0,"analysis":"analyse courte max 80 chars"}`;
 
-const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_TEXT_LENGTH = 500;
+
+export const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
+
+function validateImageInput(imageBase64?: string): void {
+  if (!imageBase64) return;
+  const byteSize = Math.ceil(imageBase64.length * 0.75);
+  if (byteSize > MAX_IMAGE_BYTES) {
+    throw new Error("Image trop volumineuse (max 4 Mo).");
+  }
+}
+
+function validateTextInput(text: string): void {
+  if (text.length > MAX_TEXT_LENGTH) {
+    throw new Error(`Texte trop long (max ${MAX_TEXT_LENGTH} caractères).`);
+  }
+}
 
 export async function analyzeFood(
   text: string,
   imageBase64?: string,
   imageMime?: string
 ): Promise<GeminiResponse> {
+  validateImageInput(imageBase64);
+  validateTextInput(text);
+
   const parts: Content["parts"] = [];
 
   if (imageBase64) {
@@ -59,9 +79,11 @@ export async function analyzeFood(
 }
 
 export async function refineFood(
-  existing: { food: string; calories: number; protein: number; carbs: number; fat: number; analysis: string },
+  existing: GeminiResponse,
   correction: string
 ): Promise<GeminiResponse> {
+  validateTextInput(correction);
+
   const parts: Content["parts"] = [];
   parts.push({
     text: `Repas existant à corriger :
@@ -89,6 +111,19 @@ Recalcule les valeurs nutritionnelles en tenant compte de cette correction.`,
 
   const response = result.text ?? "";
   return parseGeminiResponse(response);
+}
+
+export async function chatWithCoach(
+  contents: Array<{ role: string; parts: Array<{ text: string }> }>
+): Promise<string> {
+  const result = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: contents as Content[],
+    config: {
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  return result.text ?? "";
 }
 
 function parseGeminiResponse(response: string): GeminiResponse {

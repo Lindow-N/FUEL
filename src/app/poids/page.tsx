@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { WeightChart } from "@/components/WeightChart";
 import { WeightEntry } from "@/lib/types";
 import * as firestore from "@/lib/firestore";
-import { Plus, Scale } from "lucide-react";
+import { Plus, Scale, Trash2 } from "lucide-react";
 
 export default function PoidsPage() {
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -46,6 +47,18 @@ export default function PoidsPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (entry: WeightEntry) => {
+    setDeleting(entry.id);
+    try {
+      await firestore.deleteWeightEntry(entry.id);
+      setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -104,6 +117,37 @@ export default function PoidsPage() {
               })}
             </p>
           </div>
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50 space-y-2">
+          <h2 className="text-sm font-semibold text-slate-300 mb-2">
+            Historique
+          </h2>
+          {[...entries].reverse().map((entry) => (
+            <div
+              key={entry.id}
+              className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-800/40 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-white">{entry.value} kg</span>
+                <span className="text-xs text-slate-500">
+                  {new Date(entry.date).toLocaleDateString("fr-FR", {
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+              </div>
+              <button
+                onClick={() => handleDelete(entry)}
+                disabled={deleting === entry.id}
+                className="p-1.5 text-slate-600 hover:text-red-400 disabled:opacity-50 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

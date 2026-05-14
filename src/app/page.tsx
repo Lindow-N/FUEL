@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { CircularProgress } from "@/components/CircularProgress";
 import { MacroCard } from "@/components/MacroCard";
 import { MealLog } from "@/components/MealLog";
@@ -64,14 +64,28 @@ export default function Dashboard() {
     if (next <= today) setSelectedDate(next);
   };
 
-  const summary: DailySummary = logs.reduce(
-    (acc, log) => ({
-      calories: acc.calories + log.calories,
-      protein: acc.protein + log.protein,
-      carbs: acc.carbs + log.carbs,
-      fat: acc.fat + log.fat,
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const summary: DailySummary = useMemo(
+    () =>
+      logs.reduce(
+        (acc, log) => ({
+          calories: acc.calories + log.calories,
+          protein: acc.protein + log.protein,
+          carbs: acc.carbs + log.carbs,
+          fat: acc.fat + log.fat,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      ),
+    [logs]
+  );
+
+  const displayDate = useMemo(
+    () =>
+      new Date(selectedDate).toLocaleDateString("fr-FR", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      }),
+    [selectedDate]
   );
 
   const handleAiSubmit = async (text: string, imageBase64?: string, imageMime?: string) => {
@@ -85,7 +99,8 @@ export default function Dashboard() {
       setToast({ message: `${data.food} — ${data.calories} kcal loggé`, type: "success" });
     } catch (err) {
       console.error(err);
-      setToast({ message: "Erreur lors de l'analyse", type: "error" });
+      const msg = err instanceof Error ? err.message : "Erreur lors de l'analyse";
+      setToast({ message: msg, type: "error" });
     } finally {
       setLoading(false);
     }
@@ -130,12 +145,6 @@ export default function Dashboard() {
       setEditLoading(false);
     }
   };
-
-  const displayDate = new Date(selectedDate).toLocaleDateString("fr-FR", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
 
   return (
     <div className="space-y-6 animate-fade-in">

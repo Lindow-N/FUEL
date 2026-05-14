@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Bot, User } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
+import { chatWithCoach } from "@/lib/gemini";
 import {
   FoodLog,
   WeightEntry,
@@ -66,8 +66,6 @@ TON ET STYLE :
 - Parle en grammes, kcal, index glycémique, ratios macro
 - Sois concis : 3-5 phrases max par réponse sauf si demande détaillée
 - Français uniquement`;
-
-const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
 
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -164,15 +162,7 @@ export default function CoachPage() {
         { role: "user" as const, parts: [{ text: input.trim() }] },
       ];
 
-      const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: fullContents,
-        config: {
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      });
-
-      const response = result.text ?? "";
+      const response = await chatWithCoach(fullContents);
 
       setMessages((prev) => [
         ...prev,

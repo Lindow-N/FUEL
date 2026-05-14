@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence, type Firestore } from "firebase/firestore";
 import {
   getAuth,
   signInAnonymously,
@@ -39,6 +39,9 @@ function getFirebaseApp() {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   db = getFirestore(app);
   auth = getAuth(app);
+
+  enableIndexedDbPersistence(db).catch(() => {});
+
   return app;
 }
 
@@ -170,6 +173,26 @@ export async function signInWithGoogle(): Promise<SignInResult> {
   const result = await signInWithPopup(authInstance, googleProvider);
   cachedUid = result.user.uid;
   return { user: result.user };
+}
+
+export function getAuthErrorMessage(err: unknown): string {
+  const error = err as { code?: string; message?: string };
+  switch (error.code) {
+    case "auth/popup-blocked":
+      return "Popup bloquée par le navigateur. Autorise les popups pour ce site.";
+    case "auth/popup-closed-by-user":
+      return "";
+    case "auth/unauthorized-domain":
+      return "Domaine non autorisé. Vérifie la configuration Firebase.";
+    case "auth/operation-not-allowed":
+      return "Connexion Google non activée. Active-la dans la console Firebase.";
+    case "auth/network-request-failed":
+      return "Pas de connexion internet.";
+    case "auth/cancelled-popup-request":
+      return "";
+    default:
+      return error.message || "Erreur de connexion Google. Réessaie.";
+  }
 }
 
 export function getCurrentUser(): User | null {

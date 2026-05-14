@@ -1,35 +1,42 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signInWithGoogle, getCurrentUser, signOutUser, handleRedirectResult, type SignInResult } from "@/lib/firebase";
+import { signInWithGoogle, getCurrentUser, signOutUser, handleRedirectResult, getAuthErrorMessage, type SignInResult } from "@/lib/firebase";
 import * as firestore from "@/lib/firestore";
 import { mealsToCSV, weightToCSV, downloadCSV } from "@/lib/csv";
 import { User } from "firebase/auth";
-import { LogIn, LogOut, Shield, User as UserIcon, Download, Loader2 } from "lucide-react";
+import { LogIn, LogOut, Shield, User as UserIcon, Download, Loader2, AlertCircle } from "lucide-react";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
+  const [exportLoading, setExportLoading] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const processMigration = async (result: SignInResult) => {
+    if (result.migratedFrom) {
+      setMigrating(true);
+      try {
+        await firestore.migrateUserData(result.migratedFrom, result.user.uid);
+      } finally {
+        setMigrating(false);
+      }
+    }
+    setUser(result.user);
+  };
 
   useEffect(() => {
     setUser(getCurrentUser());
 
     (async () => {
       try {
-        const result: SignInResult | null = await handleRedirectResult();
-        if (!result) return;
-
-        if (result.migratedFrom) {
-          setMigrating(true);
-          await firestore.migrateUserData(result.migratedFrom, result.user.uid);
-          setMigrating(false);
-        }
-        setUser(result.user);
+        const result = await handleRedirectResult();
+        if (result) await processMigration(result);
       } catch (err) {
         console.error("[FUEL] Redirect result error:", err);
-        setError("Erreur de connexion Google");
+        setError(getAuthErrorMessage(err));
       }
     })();
   }, []);
@@ -39,15 +46,11 @@ export default function SettingsPage() {
     setError(null);
     try {
       const result = await signInWithGoogle();
-      if (result.migratedFrom) {
-        setMigrating(true);
-        await firestore.migrateUserData(result.migratedFrom, result.user.uid);
-        setMigrating(false);
-      }
-      setUser(result.user);
+      await processMigration(result);
     } catch (err) {
       console.error("[FUEL] Google sign-in error:", err);
-      setError("Erreur de connexion Google");
+      const msg = getAuthErrorMessage(err);
+      if (msg) setError(msg);
     } finally {
       setLoading(false);
     }
@@ -62,6 +65,33 @@ export default function SettingsPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExport = async (type: "meals" | "weight") => {
+    setExportLoading(type);
+    setExportError(null);
+    try {
+      if (type === "meals") {
+        const logs = await firestore.getRecentLogs(90);
+        if (logs.length === 0) {
+          setExportError("Aucun repas à exporter.");
+          return;
+        }
+        downloadCSV(mealsToCSV(logs), `fuel-repas-${new Date().toISOString().split("T")[0]}.csv`);
+      } else {
+        const entries = await firestore.getWeightEntries(365);
+        if (entries.length === 0) {
+          setExportError("Aucune donnée de poids à exporter.");
+          return;
+        }
+        downloadCSV(weightToCSV(entries), `fuel-poids-${new Date().toISOString().split("T")[0]}.csv`);
+      }
+    } catch (err) {
+      console.error("[FUEL] Export error:", err);
+      setExportError("Erreur lors de l'export.");
+    } finally {
+      setExportLoading(null);
     }
   };
 
@@ -134,7 +164,10 @@ export default function SettingsPage() {
         )}
 
         {error && (
-          <p className="text-xs text-red-400 text-center">{error}</p>
+          <div className="flex items-start gap-2 bg-red-500/10 rounded-lg p-3 border border-red-500/20">
+            <AlertCircle size={14} className="text-red-400 mt-0.5 shrink-0" />
+            <p className="text-xs text-red-400">{error}</p>
+          </div>
         )}
       </div>
 
@@ -144,28 +177,33 @@ export default function SettingsPage() {
         </h2>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={async () => {
-              const logs = await firestore.getRecentLogs(90);
-              if (logs.length === 0) return;
-              downloadCSV(mealsToCSV(logs), `fuel-repas-${new Date().toISOString().split("T")[0]}.csv`);
-            }}
-            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 text-xs font-medium transition-colors"
+            onClick={() => handleExport("meals")}
+            disabled={exportLoading !== null}
+            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-xl text-slate-300 text-xs font-medium transition-colors"
           >
-            <Download size={14} />
+            {exportLoading === "meals" ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
             Repas (90j)
           </button>
           <button
-            onClick={async () => {
-              const entries = await firestore.getWeightEntries(365);
-              if (entries.length === 0) return;
-              downloadCSV(weightToCSV(entries), `fuel-poids-${new Date().toISOString().split("T")[0]}.csv`);
-            }}
-            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 text-xs font-medium transition-colors"
+            onClick={() => handleExport("weight")}
+            disabled={exportLoading !== null}
+            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-xl text-slate-300 text-xs font-medium transition-colors"
           >
-            <Download size={14} />
+            {exportLoading === "weight" ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
             Poids
           </button>
         </div>
+        {exportError && (
+          <p className="text-xs text-amber-400 text-center">{exportError}</p>
+        )}
       </div>
 
       <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50">
