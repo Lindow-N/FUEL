@@ -95,6 +95,7 @@ function isMobile(): boolean {
 export interface SignInResult {
   user: User;
   migratedFrom?: string;
+  redirectPending?: boolean;
 }
 
 export async function handleRedirectResult(): Promise<SignInResult | null> {
@@ -129,7 +130,7 @@ export async function signInWithGoogle(): Promise<SignInResult> {
       sessionStorage.setItem(ANON_UID_KEY, currentUser.uid);
     }
     await signInWithRedirect(authInstance, googleProvider);
-    return { user: currentUser! };
+    return { user: currentUser!, redirectPending: true };
   }
 
   if (currentUser && currentUser.isAnonymous) {
@@ -186,6 +187,6 @@ export async function signOutUser(): Promise<void> {
   const authInstance = getAuthInstance();
   cachedUid = null;
   await authInstance.signOut();
-  await signInAnonymously(authInstance);
-  cachedUid = authInstance.currentUser?.uid || null;
+  const cred = await signInAnonymously(authInstance);
+  cachedUid = cred.user.uid;
 }

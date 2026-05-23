@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { getDb, ensureAuth } from "./firebase";
 import { FoodLog, WeightEntry } from "./types";
@@ -175,12 +176,20 @@ export async function migrateUserData(fromUid: string, toUid: string): Promise<v
   const db = getDb();
 
   const logsSnap = await getDocs(collection(db, "users", fromUid, "dailyLogs"));
-  for (const d of logsSnap.docs) {
-    await addDoc(collection(db, "users", toUid, "dailyLogs"), d.data());
-  }
-
   const weightSnap = await getDocs(collection(db, "users", fromUid, "weightEntries"));
-  for (const d of weightSnap.docs) {
-    await setDoc(doc(db, "users", toUid, "weightEntries", d.id), d.data());
+
+  const allDocs = [
+    ...logsSnap.docs.map((d) => ({ ref: doc(collection(db, "users", toUid, "dailyLogs")), data: d.data() })),
+    ...weightSnap.docs.map((d) => ({ ref: doc(db, "users", toUid, "weightEntries", d.id), data: d.data() })),
+  ];
+
+  const BATCH_SIZE = 450;
+  for (let i = 0; i < allDocs.length; i += BATCH_SIZE) {
+    const chunk = allDocs.slice(i, i + BATCH_SIZE);
+    const batch = writeBatch(db);
+    for (const { ref, data } of chunk) {
+      batch.set(ref, data);
+    }
+    await batch.commit();
   }
 }

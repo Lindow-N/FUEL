@@ -8,6 +8,32 @@ interface AiInputProps {
   loading: boolean;
 }
 
+const MAX_DIM = 1024;
+const JPEG_QUALITY = 0.7;
+
+function compressImage(file: File): Promise<{ base64: string; mime: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+      resolve({ base64: dataUrl.split(",")[1], mime: "image/jpeg" });
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export function AiInput({ onSubmit, loading }: AiInputProps) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<string | null>(null);
@@ -16,15 +42,22 @@ export function AiInput({ onSubmit, loading }: AiInputProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  const processFile = (file: File) => {
-    setImageMime(file.type || "image/jpeg");
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setImage(result.split(",")[1]);
-      setPreview(result);
-    };
-    reader.readAsDataURL(file);
+  const processFile = async (file: File) => {
+    try {
+      const { base64, mime } = await compressImage(file);
+      setImage(base64);
+      setImageMime(mime);
+      setPreview(`data:${mime};base64,${base64}`);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        setImage(result.split(",")[1]);
+        setImageMime(file.type || "image/jpeg");
+        setPreview(result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleCamera = (e: React.ChangeEvent<HTMLInputElement>) => {

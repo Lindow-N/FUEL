@@ -52,6 +52,7 @@ export default function SettingsPage() {
     setError(null);
     try {
       const result = await signInWithGoogle();
+      if (result.redirectPending) return;
       await processMigration(result);
     } catch (err) {
       console.error("[FUEL] Google sign-in error:", err);

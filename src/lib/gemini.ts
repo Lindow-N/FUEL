@@ -62,11 +62,8 @@ export async function analyzeFood(
   const config: Record<string, unknown> = {
     systemInstruction: SYSTEM_INSTRUCTION,
     thinkingConfig: { thinkingBudget: 0 },
+    responseMimeType: "application/json",
   };
-
-  if (!imageBase64) {
-    config.responseMimeType = "application/json";
-  }
 
   const result = await ai.models.generateContent({
     model: "gemini-2.5-flash",

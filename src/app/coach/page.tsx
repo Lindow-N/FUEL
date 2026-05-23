@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Bot, User } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Loader2, Bot, User, RotateCcw } from "lucide-react";
 import { chatWithCoach } from "@/lib/gemini";
 import {
   FoodLog,
@@ -13,6 +13,7 @@ import {
 import * as firestore from "@/lib/firestore";
 
 interface Message {
+  id: string;
   role: "user" | "assistant";
   content: string;
 }
@@ -67,13 +68,37 @@ TON ET STYLE :
 - Sois concis : 3-5 phrases max par réponse sauf si demande détaillée
 - Français uniquement`;
 
+const MAX_HISTORY_MESSAGES = 10;
+
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [contextData, setContextData] = useState("");
+  const [initialMsg, setInitialMsg] = useState<Message | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const buildInitialMessages = useCallback((logs: FoodLog[], weights: WeightEntry[]): Message => {
+    const todayLogs = logs.filter((l) => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const logDate = new Date(l.timestamp);
+      const logDay = `${logDate.getFullYear()}-${String(logDate.getMonth() + 1).padStart(2, "0")}-${String(logDate.getDate()).padStart(2, "0")}`;
+      return logDay === today;
+    });
+
+    const todaySummary = todayLogs.reduce(
+      (acc, l) => ({ calories: acc.calories + l.calories, protein: acc.protein + l.protein }),
+      { calories: 0, protein: 0 },
+    );
+
+    return {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: `Anthony. ${todayLogs.length > 0 ? `Aujourd'hui: ${Math.round(todaySummary.calories)}/${DAILY_TARGETS.calories} kcal, ${Math.round(todaySummary.protein)}/${DAILY_TARGETS.protein}g protéines.` : "Aucun repas loggé aujourd'hui."} ${weights.length > 0 ? `Dernier poids: ${weights[weights.length - 1].value}kg.` : ""} Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g P. Go.`,
+    };
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -91,8 +116,11 @@ export default function CoachPage() {
         const weightCtx = `\n\nSUIVI POIDS (30 jours):\n${summarizeWeight(weights)}`;
 
         const todayLogs = logs.filter((l) => {
-          const today = new Date().toISOString().split("T")[0];
-          return new Date(l.timestamp).toISOString().split("T")[0] === today;
+          const now = new Date();
+          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+          const logDate = new Date(l.timestamp);
+          const logDay = `${logDate.getFullYear()}-${String(logDate.getMonth() + 1).padStart(2, "0")}-${String(logDate.getDate()).padStart(2, "0")}`;
+          return logDay === today;
         });
         const todayCtx =
           todayLogs.length > 0
@@ -102,34 +130,24 @@ export default function CoachPage() {
         const full = BASE_PROMPT + nutritionCtx + weightCtx + todayCtx;
         setContextData(full);
 
-        const todaySummary = todayLogs.reduce(
-          (acc, l) => ({
-            calories: acc.calories + l.calories,
-            protein: acc.protein + l.protein,
-          }),
-          { calories: 0, protein: 0 },
-        );
-
-        setMessages([
-          {
-            role: "assistant",
-            content: `Anthony. ${todayLogs.length > 0 ? `Aujourd'hui: ${Math.round(todaySummary.calories)}/${DAILY_TARGETS.calories} kcal, ${Math.round(todaySummary.protein)}/${DAILY_TARGETS.protein}g protéines.` : "Aucun repas loggé aujourd'hui."} ${weights.length > 0 ? `Dernier poids: ${weights[weights.length - 1].value}kg.` : ""} Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g P. Go.`,
-          },
-        ]);
+        const msg = buildInitialMessages(logs, weights);
+        setInitialMsg(msg);
+        setMessages([msg]);
       } catch {
         setContextData(BASE_PROMPT);
-        setMessages([
-          {
-            role: "assistant",
-            content: `Anthony. Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g protéines. Je n'ai pas pu charger tes données. On y va quand même.`,
-          },
-        ]);
+        const fallback: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Anthony. Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g protéines. Je n'ai pas pu charger tes données. On y va quand même.`,
+        };
+        setInitialMsg(fallback);
+        setMessages([fallback]);
       } finally {
         setReady(true);
       }
     }
     load();
-  }, []);
+  }, [buildInitialMessages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -141,13 +159,14 @@ export default function CoachPage() {
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
-    const userMsg: Message = { role: "user", content: input.trim() };
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: input.trim() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
-      const history = messages.map((m) => ({
+      const recentHistory = messages.slice(-MAX_HISTORY_MESSAGES);
+      const history = recentHistory.map((m) => ({
         role: m.role === "assistant" ? "model" : ("user" as const),
         parts: [{ text: m.content }],
       }));
@@ -166,18 +185,25 @@ export default function CoachPage() {
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: response },
+        { id: crypto.randomUUID(), role: "assistant", content: response },
       ]);
     } catch {
       setMessages((prev) => [
         ...prev,
         {
+          id: crypto.randomUUID(),
           role: "assistant",
           content: "Erreur. Réessaie.",
         },
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    if (initialMsg) {
+      setMessages([initialMsg]);
     }
   };
 
@@ -192,16 +218,29 @@ export default function CoachPage() {
   return (
     <div className="flex flex-col h-[calc(100dvh-8rem)] animate-fade-in">
       <header className="mb-4">
-        <h1 className="text-2xl font-bold text-white tracking-tight">Coach</h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Tes données sont en contexte
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Coach</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tes données sont en contexte
+            </p>
+          </div>
+          {messages.length > 1 && (
+            <button
+              onClick={handleReset}
+              className="p-2 text-slate-500 hover:text-emerald-400 transition-colors"
+              title="Nouvelle conversation"
+            >
+              <RotateCcw size={18} />
+            </button>
+          )}
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pb-4">
-        {messages.map((msg, i) => (
+        {messages.map((msg) => (
           <div
-            key={i}
+            key={msg.id}
             className={`flex gap-2.5 ${
               msg.role === "user" ? "justify-end" : "justify-start"
             }`}
