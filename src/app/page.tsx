@@ -314,9 +314,9 @@ export default function Dashboard() {
                   </button>
                   <button
                     onClick={() => handleDeleteFavorite(fav.id)}
-                    className="p-1 text-slate-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                    className="p-1.5 text-slate-500 hover:text-red-400 transition-colors"
                   >
-                    <Trash2 size={12} />
+                    <X size={14} />
                   </button>
                 </div>
               ))}
