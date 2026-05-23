@@ -3,16 +3,16 @@
 import { useState, useEffect } from "react";
 import { signInWithGoogle, getCurrentUser, signOutUser, handleRedirectResult, getAuthErrorMessage, getAuthInstance, type SignInResult } from "@/lib/firebase";
 import * as firestore from "@/lib/firestore";
-import { mealsToCSV, weightToCSV, downloadCSV } from "@/lib/csv";
+import { buildFullExport, downloadJSON } from "@/lib/csv";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { LogIn, LogOut, Shield, User as UserIcon, Download, Loader2, AlertCircle } from "lucide-react";
+import { LogIn, LogOut, Shield, User as UserIcon, Loader2, AlertCircle, FileJson } from "lucide-react";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
-  const [exportLoading, setExportLoading] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const processMigration = async (result: SignInResult) => {
@@ -74,30 +74,25 @@ export default function SettingsPage() {
     }
   };
 
-  const handleExport = async (type: "meals" | "weight") => {
-    setExportLoading(type);
+  const handleExport = async () => {
+    setExportLoading(true);
     setExportError(null);
     try {
-      if (type === "meals") {
-        const logs = await firestore.getRecentLogs(90);
-        if (logs.length === 0) {
-          setExportError("Aucun repas à exporter.");
-          return;
-        }
-        downloadCSV(mealsToCSV(logs), `fuel-repas-${new Date().toISOString().split("T")[0]}.csv`);
-      } else {
-        const entries = await firestore.getWeightEntries(365);
-        if (entries.length === 0) {
-          setExportError("Aucune donnée de poids à exporter.");
-          return;
-        }
-        downloadCSV(weightToCSV(entries), `fuel-poids-${new Date().toISOString().split("T")[0]}.csv`);
+      const [logs, entries] = await Promise.all([
+        firestore.getAllLogs(),
+        firestore.getAllWeightEntries(),
+      ]);
+      if (logs.length === 0 && entries.length === 0) {
+        setExportError("Aucune donnée à exporter.");
+        return;
       }
+      const data = buildFullExport(logs, entries);
+      downloadJSON(data, `fuel-bilan-${new Date().toISOString().split("T")[0]}.json`);
     } catch (err) {
       console.error("[FUEL] Export error:", err);
       setExportError("Erreur lors de l'export.");
     } finally {
-      setExportLoading(null);
+      setExportLoading(false);
     }
   };
 
@@ -181,41 +176,26 @@ export default function SettingsPage() {
         <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
           Export données
         </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => handleExport("meals")}
-            disabled={exportLoading !== null}
-            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-xl text-slate-300 text-xs font-medium transition-colors"
-          >
-            {exportLoading === "meals" ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Download size={14} />
-            )}
-            Repas (90j)
-          </button>
-          <button
-            onClick={() => handleExport("weight")}
-            disabled={exportLoading !== null}
-            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 rounded-xl text-slate-300 text-xs font-medium transition-colors"
-          >
-            {exportLoading === "weight" ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Download size={14} />
-            )}
-            Poids
-          </button>
-        </div>
+        <button
+          onClick={handleExport}
+          disabled={exportLoading}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 rounded-xl text-emerald-400 text-sm font-medium transition-colors border border-emerald-500/20"
+        >
+          {exportLoading ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <FileJson size={16} />
+          )}
+          {exportLoading ? "Export en cours..." : "Bilan complet (JSON)"}
+        </button>
+        <p className="text-[10px] text-slate-500 text-center">
+          Toutes tes données : repas, poids, macros, objectifs — prêt pour une IA
+        </p>
         {exportError && (
           <p className="text-xs text-amber-400 text-center">{exportError}</p>
         )}
       </div>
 
-      <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50">
-        <p className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">UID</p>
-        <p className="text-xs text-slate-400 font-mono mt-1 break-all">{user?.uid || "—"}</p>
-      </div>
     </div>
   );
 }

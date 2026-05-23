@@ -145,6 +145,32 @@ export async function upsertWeightEntry(value: number): Promise<string> {
   return docId;
 }
 
+export async function getAllLogs(): Promise<FoodLog[]> {
+  const db = getDb();
+  const userId = await ensureAuth();
+
+  const q = query(
+    collection(db, "users", userId, "dailyLogs"),
+    orderBy("timestamp", "desc")
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => validateFoodLog(d.data(), d.id));
+}
+
+export async function getAllWeightEntries(): Promise<WeightEntry[]> {
+  const db = getDb();
+  const userId = await ensureAuth();
+
+  const q = query(
+    collection(db, "users", userId, "weightEntries"),
+    orderBy("date", "asc")
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => validateWeightEntry(d.data(), d.id));
+}
+
 export async function migrateUserData(fromUid: string, toUid: string): Promise<void> {
   const db = getDb();
 
