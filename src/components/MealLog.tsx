@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { FoodLog } from "@/lib/types";
-import { Trash2, Clock, Copy, Pencil, Send, Loader2, X } from "lucide-react";
+import { Trash2, Clock, Copy, Pencil, Send, Loader2, X, Star } from "lucide-react";
 
 interface MealLogProps {
   logs: FoodLog[];
   onDelete?: (id: string) => void;
   onDuplicate?: (log: FoodLog) => void;
   onEdit?: (log: FoodLog, correction: string) => Promise<void>;
+  onFavorite?: (log: FoodLog) => void;
   editLoading?: boolean;
 }
 
-export function MealLog({ logs, onDelete, onDuplicate, onEdit, editLoading }: MealLogProps) {
+export function MealLog({ logs, onDelete, onDuplicate, onEdit, onFavorite, editLoading }: MealLogProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [correction, setCorrection] = useState("");
 
@@ -112,6 +113,15 @@ export function MealLog({ logs, onDelete, onDuplicate, onEdit, editLoading }: Me
                       title="Annuler"
                     >
                       <X size={14} />
+                    </button>
+                  )}
+                  {onFavorite && !isEditing && (
+                    <button
+                      onClick={() => onFavorite(log)}
+                      className="p-1.5 text-slate-600 hover:text-amber-400 transition-colors"
+                      title="Ajouter aux favoris"
+                    >
+                      <Star size={14} />
                     </button>
                   )}
                   {onDuplicate && !isEditing && (

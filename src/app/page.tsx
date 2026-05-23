@@ -6,10 +6,10 @@ import { MacroCard } from "@/components/MacroCard";
 import { MealLog } from "@/components/MealLog";
 import { AiInput } from "@/components/AiInput";
 import { Toast } from "@/components/Toast";
-import { FoodLog, DailySummary, DAILY_TARGETS } from "@/lib/types";
+import { FoodLog, DailySummary, DAILY_TARGETS, Favorite } from "@/lib/types";
 import { analyzeFood, refineFood } from "@/lib/gemini";
 import * as firestore from "@/lib/firestore";
-import { Flame, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Flame, ChevronLeft, ChevronRight, RefreshCw, Star, X, Trash2 } from "lucide-react";
 
 function toDateStr(d: Date) {
   const yyyy = d.getFullYear();
@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
   const [toast, setToast] = useState<ToastData | null>(null);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
 
   const today = toDateStr(new Date());
   const isToday = selectedDate === today;
@@ -53,6 +55,12 @@ export default function Dashboard() {
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  useEffect(() => {
+    if (isToday) {
+      firestore.getFavorites().then(setFavorites).catch(() => {});
+    }
+  }, [isToday]);
 
   const goBack = () => {
     const d = new Date(selectedDate);
@@ -149,6 +157,44 @@ export default function Dashboard() {
     }
   };
 
+  const handleFavorite = async (log: FoodLog) => {
+    try {
+      const id = await firestore.addFavorite({
+        food: log.food,
+        calories: log.calories,
+        protein: log.protein,
+        carbs: log.carbs,
+        fat: log.fat,
+      });
+      setFavorites((prev) => [{ id, food: log.food, calories: log.calories, protein: log.protein, carbs: log.carbs, fat: log.fat }, ...prev]);
+      setToast({ message: `${log.food} ajouté aux favoris`, type: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Erreur lors de l'ajout aux favoris", type: "error" });
+    }
+  };
+
+  const handleLogFavorite = async (fav: Favorite) => {
+    try {
+      const data = { food: fav.food, calories: fav.calories, protein: fav.protein, carbs: fav.carbs, fat: fav.fat, analysis: "" };
+      const id = await firestore.addFoodLog(data);
+      setLogs((prev) => [{ id, ...data, timestamp: Date.now() }, ...prev]);
+      setToast({ message: `${fav.food} — ${fav.calories} kcal loggé`, type: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Erreur lors du log", type: "error" });
+    }
+  };
+
+  const handleDeleteFavorite = async (favId: string) => {
+    try {
+      await firestore.deleteFavorite(favId);
+      setFavorites((prev) => prev.filter((f) => f.id !== favId));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {toast && (
@@ -240,6 +286,45 @@ export default function Dashboard() {
 
       {isToday && <AiInput onSubmit={handleAiSubmit} loading={loading} />}
 
+      {isToday && favorites.length > 0 && (
+        <div className="bg-slate-900/60 rounded-2xl border border-slate-800/50 overflow-hidden">
+          <button
+            onClick={() => setShowFavorites(!showFavorites)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-300 hover:text-white transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Star size={14} className="text-amber-400" />
+              Favoris
+            </div>
+            <span className="text-xs text-slate-500">{favorites.length}</span>
+          </button>
+          {showFavorites && (
+            <div className="px-2 pb-2 space-y-1">
+              {favorites.map((fav) => (
+                <div
+                  key={fav.id}
+                  className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-800/60 transition-colors group"
+                >
+                  <button
+                    onClick={() => handleLogFavorite(fav)}
+                    className="flex-1 flex items-center justify-between min-w-0"
+                  >
+                    <span className="text-sm text-white truncate">{fav.food}</span>
+                    <span className="text-xs text-emerald-500 font-medium shrink-0 ml-2">{fav.calories} kcal</span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFavorite(fav.id)}
+                    className="p-1 text-slate-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <h2 className="text-sm font-semibold text-slate-300 mb-3">
           Repas{!isToday ? ` — ${displayDate}` : " du jour"}
@@ -265,6 +350,7 @@ export default function Dashboard() {
             onDelete={isToday ? handleDelete : undefined}
             onDuplicate={isToday ? handleDuplicate : undefined}
             onEdit={isToday ? handleEdit : undefined}
+            onFavorite={isToday ? handleFavorite : undefined}
             editLoading={editLoading}
           />
         )}

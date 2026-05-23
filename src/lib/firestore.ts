@@ -13,7 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { getDb, ensureAuth } from "./firebase";
-import { FoodLog, WeightEntry } from "./types";
+import { FoodLog, WeightEntry, Favorite } from "./types";
 
 function toMillis(t: unknown): number {
   if (t && typeof t === "object" && "toMillis" in (t as object)) {
@@ -192,4 +192,42 @@ export async function migrateUserData(fromUid: string, toUid: string): Promise<v
     }
     await batch.commit();
   }
+}
+
+export async function getFavorites(): Promise<Favorite[]> {
+  const db = getDb();
+  const userId = await ensureAuth();
+
+  const q = query(
+    collection(db, "users", userId, "favorites"),
+    orderBy("createdAt", "desc")
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({
+    id: d.id,
+    food: String(d.data().food ?? ""),
+    calories: Number(d.data().calories) || 0,
+    protein: Number(d.data().protein) || 0,
+    carbs: Number(d.data().carbs) || 0,
+    fat: Number(d.data().fat) || 0,
+  }));
+}
+
+export async function addFavorite(
+  fav: Omit<Favorite, "id">
+): Promise<string> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  const ref = await addDoc(collection(db, "users", userId, "favorites"), {
+    ...fav,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function deleteFavorite(favId: string): Promise<void> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  await deleteDoc(doc(db, "users", userId, "favorites", favId));
 }

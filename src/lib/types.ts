@@ -15,6 +15,15 @@ export interface WeightEntry {
   value: number;
 }
 
+export interface Favorite {
+  id: string;
+  food: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 export interface DailySummary {
   calories: number;
   protein: number;
