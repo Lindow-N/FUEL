@@ -1,9 +1,11 @@
 "use client";
 
 import { GoogleGenAI, type Content } from "@google/genai";
-import { GeminiResponse, USER_PROFILE } from "@/lib/types";
+import { GeminiResponse, DEFAULT_TARGETS, buildUserProfile } from "@/lib/types";
 
-const SYSTEM_INSTRUCTION = `Tu es un parseur nutritionnel. ${USER_PROFILE}
+function buildSystemInstruction(): string {
+  const userProfile = buildUserProfile(DEFAULT_TARGETS);
+  return `Tu es un parseur nutritionnel. ${userProfile}
 
 RÈGLES ABSOLUES :
 - Tu DOIS TOUJOURS répondre UNIQUEMENT par un JSON valide, sans aucun autre texte.
@@ -14,6 +16,9 @@ RÈGLES ABSOLUES :
 
 Format de réponse OBLIGATOIRE (pas de markdown, pas de backticks) :
 {"food":"nom court du plat","calories":0,"protein":0,"carbs":0,"fat":0,"analysis":"analyse courte max 80 chars"}`;
+}
+
+const SYSTEM_INSTRUCTION = buildSystemInstruction();
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 500;

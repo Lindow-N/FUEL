@@ -6,7 +6,7 @@ import { MacroCard } from "@/components/MacroCard";
 import { MealLog } from "@/components/MealLog";
 import { AiInput } from "@/components/AiInput";
 import { Toast } from "@/components/Toast";
-import { FoodLog, DailySummary, DAILY_TARGETS, Favorite } from "@/lib/types";
+import { FoodLog, DailySummary, DEFAULT_TARGETS, Favorite } from "@/lib/types";
 import { analyzeFood, refineFood } from "@/lib/gemini";
 import * as firestore from "@/lib/firestore";
 import { Flame, ChevronLeft, ChevronRight, RefreshCw, Star, X, Trash2 } from "lucide-react";
@@ -33,9 +33,16 @@ export default function Dashboard() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [targets, setTargets] = useState<DailySummary>(DEFAULT_TARGETS);
 
   const today = toDateStr(new Date());
   const isToday = selectedDate === today;
+
+  useEffect(() => {
+    firestore.getCurrentGoals().then((g) => {
+      if (g) setTargets({ calories: g.calories, protein: g.protein, carbs: g.carbs, fat: g.fat });
+    }).catch(() => {});
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     setFetching(true);
@@ -256,7 +263,7 @@ export default function Dashboard() {
       <div className="flex flex-col items-center py-4">
         <CircularProgress
           value={summary.calories}
-          max={DAILY_TARGETS.calories}
+          max={targets.calories}
         />
       </div>
 
@@ -264,21 +271,21 @@ export default function Dashboard() {
         <MacroCard
           label="Protéines"
           value={Math.round(summary.protein)}
-          target={DAILY_TARGETS.protein}
+          target={targets.protein}
           unit="g"
           color="#10b981"
         />
         <MacroCard
           label="Glucides"
           value={Math.round(summary.carbs)}
-          target={DAILY_TARGETS.carbs}
+          target={targets.carbs}
           unit="g"
           color="#3b82f6"
         />
         <MacroCard
           label="Lipides"
           value={Math.round(summary.fat)}
-          target={DAILY_TARGETS.fat}
+          target={targets.fat}
           unit="g"
           color="#f59e0b"
         />

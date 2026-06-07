@@ -7,8 +7,8 @@ import {
   FoodLog,
   WeightEntry,
   DailySummary,
-  DAILY_TARGETS,
-  USER_PROFILE,
+  DEFAULT_TARGETS,
+  buildUserProfile,
 } from "@/lib/types";
 import * as firestore from "@/lib/firestore";
 
@@ -18,7 +18,7 @@ interface Message {
   content: string;
 }
 
-function summarizeLogs(logs: FoodLog[]): string {
+function summarizeLogs(logs: FoodLog[], targets: DailySummary): string {
   const byDay: Record<string, DailySummary & { meals: string[] }> = {};
 
   for (const log of logs) {
@@ -38,14 +38,14 @@ function summarizeLogs(logs: FoodLog[]): string {
 
   return Object.entries(byDay)
     .map(([date, s]) => {
-      const protPct = Math.round((s.protein / DAILY_TARGETS.protein) * 100);
+      const protPct = Math.round((s.protein / targets.protein) * 100);
       const calStatus =
-        s.calories >= DAILY_TARGETS.calories
+        s.calories >= targets.calories
           ? "✅"
-          : s.calories >= DAILY_TARGETS.calories * 0.8
+          : s.calories >= targets.calories * 0.8
             ? "🟡"
             : "🔴";
-      return `${date}: ${Math.round(s.calories)}/${DAILY_TARGETS.calories} kcal ${calStatus} | P:${Math.round(s.protein)}g (${protPct}%) | Repas: ${s.meals.join(", ")}`;
+      return `${date}: ${Math.round(s.calories)}/${targets.calories} kcal ${calStatus} | P:${Math.round(s.protein)}g (${protPct}%) | Repas: ${s.meals.join(", ")}`;
     })
     .join("\n");
 }
@@ -60,13 +60,16 @@ function summarizeWeight(entries: WeightEntry[]): string {
   return `Dernier poids: ${latest.value}kg (${latest.date}) | Évolution: ${trend}kg sur la période | Historique: ${allWeights}`;
 }
 
-const BASE_PROMPT = `Tu es FUEL Coach, le coach nutrition personnel d'Anthony. ${USER_PROFILE}
+function buildBasePrompt(targets: DailySummary): string {
+  const userProfile = buildUserProfile(targets);
+  return `Tu es FUEL Coach, le coach nutrition personnel d'Anthony. ${userProfile}
 
 TON ET STYLE :
 - Ton "Peer-Engineer" : direct, technique, efficace, pas de bullshit
 - Parle en grammes, kcal, index glycémique, ratios macro
 - Sois concis : 3-5 phrases max par réponse sauf si demande détaillée
 - Français uniquement`;
+}
 
 const MAX_HISTORY_MESSAGES = 10;
 
@@ -77,9 +80,10 @@ export default function CoachPage() {
   const [ready, setReady] = useState(false);
   const [contextData, setContextData] = useState("");
   const [initialMsg, setInitialMsg] = useState<Message | null>(null);
+  const [targets, setTargets] = useState<DailySummary>(DEFAULT_TARGETS);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const buildInitialMessages = useCallback((logs: FoodLog[], weights: WeightEntry[]): Message => {
+  const buildInitialMessages = useCallback((logs: FoodLog[], weights: WeightEntry[], t: DailySummary): Message => {
     const todayLogs = logs.filter((l) => {
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -96,12 +100,21 @@ export default function CoachPage() {
     return {
       id: crypto.randomUUID(),
       role: "assistant",
-      content: `Anthony. ${todayLogs.length > 0 ? `Aujourd'hui: ${Math.round(todaySummary.calories)}/${DAILY_TARGETS.calories} kcal, ${Math.round(todaySummary.protein)}/${DAILY_TARGETS.protein}g protéines.` : "Aucun repas loggé aujourd'hui."} ${weights.length > 0 ? `Dernier poids: ${weights[weights.length - 1].value}kg.` : ""} Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g P. Go.`,
+      content: `Anthony. ${todayLogs.length > 0 ? `Aujourd'hui: ${Math.round(todaySummary.calories)}/${t.calories} kcal, ${Math.round(todaySummary.protein)}/${t.protein}g protéines.` : "Aucun repas loggé aujourd'hui."} ${weights.length > 0 ? `Dernier poids: ${weights[weights.length - 1].value}kg.` : ""} Tes targets: ${t.calories} kcal, ${t.protein}g P. Go.`,
     };
   }, []);
 
   useEffect(() => {
     async function load() {
+      let t = DEFAULT_TARGETS;
+      try {
+        const goals = await firestore.getCurrentGoals();
+        if (goals) {
+          t = { calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat };
+        }
+        setTargets(t);
+      } catch {}
+
       try {
         const [logs, weights] = await Promise.all([
           firestore.getRecentLogs(7),
@@ -110,7 +123,7 @@ export default function CoachPage() {
 
         const nutritionCtx =
           logs.length > 0
-            ? `\n\nDONNÉES NUTRITION (7 derniers jours):\n${summarizeLogs(logs)}`
+            ? `\n\nDONNÉES NUTRITION (7 derniers jours):\n${summarizeLogs(logs, t)}`
             : "\n\nAucun repas loggé récemment.";
 
         const weightCtx = `\n\nSUIVI POIDS (30 jours):\n${summarizeWeight(weights)}`;
@@ -124,21 +137,21 @@ export default function CoachPage() {
         });
         const todayCtx =
           todayLogs.length > 0
-            ? `\n\nAUJOURD'HUI: ${todayLogs.length} repas loggés → ${summarizeLogs(todayLogs)}`
+            ? `\n\nAUJOURD'HUI: ${todayLogs.length} repas loggés → ${summarizeLogs(todayLogs, t)}`
             : "\n\nAUJOURD'HUI: Aucun repas loggé pour le moment.";
 
-        const full = BASE_PROMPT + nutritionCtx + weightCtx + todayCtx;
+        const full = buildBasePrompt(t) + nutritionCtx + weightCtx + todayCtx;
         setContextData(full);
 
-        const msg = buildInitialMessages(logs, weights);
+        const msg = buildInitialMessages(logs, weights, t);
         setInitialMsg(msg);
         setMessages([msg]);
       } catch {
-        setContextData(BASE_PROMPT);
+        setContextData(buildBasePrompt(t));
         const fallback: Message = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `Anthony. Tes targets: ${DAILY_TARGETS.calories} kcal, ${DAILY_TARGETS.protein}g protéines. Je n'ai pas pu charger tes données. On y va quand même.`,
+          content: `Anthony. Tes targets: ${t.calories} kcal, ${t.protein}g protéines. Je n'ai pas pu charger tes données. On y va quand même.`,
         };
         setInitialMsg(fallback);
         setMessages([fallback]);

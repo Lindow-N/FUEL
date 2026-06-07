@@ -13,7 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { getDb, ensureAuth } from "./firebase";
-import { FoodLog, WeightEntry, Favorite } from "./types";
+import { FoodLog, WeightEntry, Favorite, GoalEntry } from "./types";
 
 function toMillis(t: unknown): number {
   if (t && typeof t === "object" && "toMillis" in (t as object)) {
@@ -230,4 +230,61 @@ export async function deleteFavorite(favId: string): Promise<void> {
   const db = getDb();
   const userId = await ensureAuth();
   await deleteDoc(doc(db, "users", userId, "favorites", favId));
+}
+
+export async function getCurrentGoals(): Promise<GoalEntry | null> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  const today = new Date().toISOString().split("T")[0];
+
+  const q = query(
+    collection(db, "users", userId, "goals"),
+    where("effectiveDate", "<=", today),
+    orderBy("effectiveDate", "desc")
+  );
+
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+
+  const d = snap.docs[0];
+  return {
+    id: d.id,
+    calories: Number(d.data().calories) || 0,
+    protein: Number(d.data().protein) || 0,
+    carbs: Number(d.data().carbs) || 0,
+    fat: Number(d.data().fat) || 0,
+    effectiveDate: String(d.data().effectiveDate ?? ""),
+    createdAt: toMillis(d.data().createdAt),
+  };
+}
+
+export async function setGoals(goals: Omit<GoalEntry, "id" | "createdAt">): Promise<string> {
+  const db = getDb();
+  const userId = await ensureAuth();
+  const ref = await addDoc(collection(db, "users", userId, "goals"), {
+    ...goals,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getAllGoalEntries(): Promise<GoalEntry[]> {
+  const db = getDb();
+  const userId = await ensureAuth();
+
+  const q = query(
+    collection(db, "users", userId, "goals"),
+    orderBy("effectiveDate", "asc")
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({
+    id: d.id,
+    calories: Number(d.data().calories) || 0,
+    protein: Number(d.data().protein) || 0,
+    carbs: Number(d.data().carbs) || 0,
+    fat: Number(d.data().fat) || 0,
+    effectiveDate: String(d.data().effectiveDate ?? ""),
+    createdAt: toMillis(d.data().createdAt),
+  }));
 }

@@ -1,4 +1,4 @@
-import { FoodLog, WeightEntry, DAILY_TARGETS, USER_PROFILE } from "./types";
+import { FoodLog, WeightEntry, GoalEntry, DEFAULT_TARGETS, buildUserProfile } from "./types";
 
 interface DayData {
   date: string;
@@ -19,7 +19,8 @@ interface DayData {
 
 export function buildFullExport(
   logs: FoodLog[],
-  weightEntries: WeightEntry[]
+  weightEntries: WeightEntry[],
+  goalEntries: GoalEntry[]
 ): object {
   const byDay = new Map<string, DayData>();
 
@@ -52,15 +53,31 @@ export function buildFullExport(
 
   const jours = Array.from(byDay.values()).sort((a, b) => b.date.localeCompare(a.date));
 
+  const currentGoals = goalEntries.length > 0 ? goalEntries[goalEntries.length - 1] : null;
+  const activeTargets = currentGoals
+    ? { calories: currentGoals.calories, protein: currentGoals.protein, carbs: currentGoals.carbs, fat: currentGoals.fat }
+    : DEFAULT_TARGETS;
+
+  const historiqueObjectifs = goalEntries.length > 0
+    ? goalEntries.map((g) => ({
+        date_changement: g.effectiveDate,
+        calories: g.calories,
+        proteines_g: g.protein,
+        glucides_g: g.carbs,
+        lipides_g: g.fat,
+      }))
+    : undefined;
+
   return {
     exporte_le: new Date().toISOString(),
-    profil: USER_PROFILE.trim(),
+    profil: buildUserProfile(activeTargets).trim(),
     objectifs_quotidiens: {
-      calories: DAILY_TARGETS.calories,
-      proteines_g: DAILY_TARGETS.protein,
-      glucides_g: DAILY_TARGETS.carbs,
-      lipides_g: DAILY_TARGETS.fat,
+      calories: activeTargets.calories,
+      proteines_g: activeTargets.protein,
+      glucides_g: activeTargets.carbs,
+      lipides_g: activeTargets.fat,
     },
+    historique_objectifs: historiqueObjectifs,
     suivi_poids: weightEntries.map((e) => ({ date: e.date, poids_kg: e.value })),
     poids_dernier: weightEntries.length > 0 ? weightEntries[weightEntries.length - 1].value : null,
     stats_globales: {
