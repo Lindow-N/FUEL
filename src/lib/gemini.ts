@@ -71,7 +71,7 @@ export async function analyzeFood(
   };
 
   const result = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.5-flash",
     contents: [{ role: "user", parts }],
     config,
   });
@@ -102,7 +102,7 @@ Recalcule les valeurs nutritionnelles en tenant compte de cette correction.`,
   });
 
   const result = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.5-flash",
     contents: [{ role: "user", parts }],
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
@@ -119,7 +119,7 @@ export async function chatWithCoach(
   contents: Array<{ role: string; parts: Array<{ text: string }> }>
 ): Promise<string> {
   const result = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3.5-flash",
     contents: contents as Content[],
     config: {
       thinkingConfig: { thinkingBudget: 0 },
