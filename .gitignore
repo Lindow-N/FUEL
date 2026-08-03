@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# dossier de récupération jetable (clés secrets + données perso — NE JAMAIS committer)
+/recovery
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

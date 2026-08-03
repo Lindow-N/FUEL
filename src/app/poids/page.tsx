@@ -6,8 +6,18 @@ import { WeightEntry } from "@/lib/types";
 import * as firestore from "@/lib/firestore";
 import { Plus, Scale, Trash2 } from "lucide-react";
 
+type RangeKey = "30d" | "90d" | "1y" | "all";
+
+const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
+  { key: "30d", label: "30 jours", days: 30 },
+  { key: "90d", label: "3 mois", days: 90 },
+  { key: "1y", label: "1 an", days: 365 },
+  { key: "all", label: "Tout", days: null },
+];
+
 export default function PoidsPage() {
-  const [entries, setEntries] = useState<WeightEntry[]>([]);
+  const [allEntries, setAllEntries] = useState<WeightEntry[]>([]);
+  const [range, setRange] = useState<RangeKey>("all");
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -16,14 +26,30 @@ export default function PoidsPage() {
 
   const fetchEntries = useCallback(async () => {
     try {
-      const data = await firestore.getWeightEntries(30);
-      setEntries(data);
+      // On charge TOUT l'historique une seule fois ; le filtrage par période
+      // se fait côté client (instantané, pas de re-fetch réseau).
+      const data = await firestore.getAllWeightEntries();
+      setAllEntries(data);
     } catch (err) {
       console.error(err);
     } finally {
       setFetching(false);
     }
   }, []);
+
+  useEffect(() => {
+    fetchEntries();
+  }, [fetchEntries]);
+
+  // Entrées filtrées selon la période sélectionnée.
+  const entries = (() => {
+    const r = RANGES.find((x) => x.key === range)!;
+    if (r.days === null) return allEntries;
+    const since = new Date();
+    since.setDate(since.getDate() - r.days);
+    const sinceStr = since.toISOString().split("T")[0];
+    return allEntries.filter((e) => e.date >= sinceStr);
+  })();
 
   useEffect(() => {
     fetchEntries();
@@ -38,7 +64,7 @@ export default function PoidsPage() {
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const id = await firestore.upsertWeightEntry(numVal);
-      setEntries((prev) => {
+      setAllEntries((prev) => {
         const filtered = prev.filter((e) => e.date !== today);
         return [...filtered, { id, date: today, value: numVal }].sort(
           (a, b) => a.date.localeCompare(b.date)
@@ -56,7 +82,7 @@ export default function PoidsPage() {
     setDeleting(entry.id);
     try {
       await firestore.deleteWeightEntry(entry.id);
-      setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+      setAllEntries((prev) => prev.filter((e) => e.id !== entry.id));
     } catch (err) {
       console.error(err);
     } finally {
@@ -64,7 +90,15 @@ export default function PoidsPage() {
     }
   };
 
-  const lastEntry = entries[entries.length - 1];
+  const lastEntry = allEntries[allEntries.length - 1];
+  const firstEntry = allEntries[0];
+
+  // Progression : poids total depuis le 1er enregistrement (motivant !).
+  const totalChange =
+    lastEntry && firstEntry && allEntries.length > 1
+      ? lastEntry.value - firstEntry.value
+      : null;
+  const rangeLabel = RANGES.find((r) => r.key === range)!.label;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -72,8 +106,43 @@ export default function PoidsPage() {
         <h1 className="text-2xl font-bold text-white tracking-tight">
           Poids
         </h1>
-        <p className="text-xs text-slate-500 mt-0.5">Évolution sur 30 jours</p>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Évolution — {rangeLabel.toLowerCase()}
+          {allEntries.length > 1 && (
+            <span className="ml-1 text-slate-600">
+              ({allEntries.length} mesures)
+            </span>
+          )}
+        </p>
       </header>
+
+      {/* Indicateur de progression depuis le 1er enregistrement */}
+      {totalChange !== null && totalChange !== 0 && (
+        <div className="flex items-center gap-3 bg-slate-900/40 rounded-xl p-3 border border-slate-800/30">
+          <span
+            className={`text-lg ${totalChange < 0 ? "text-emerald-400" : "text-orange-400"}`}
+          >
+            {totalChange < 0 ? "▼" : "▲"}
+          </span>
+          <div>
+            <p className="text-sm text-slate-300">
+              {totalChange < 0 ? "Perdu" : "Pris"}{" "}
+              <span
+                className={`font-bold ${totalChange < 0 ? "text-emerald-400" : "text-orange-400"}`}
+              >
+                {Math.abs(totalChange).toFixed(1)} kg
+              </span>{" "}
+              <span className="text-slate-500 text-xs">
+                depuis le {new Date(firstEntry.date).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </span>
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50">
         <div className="flex items-center gap-3">
@@ -123,9 +192,24 @@ export default function PoidsPage() {
       )}
 
       <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/50">
-        <h2 className="text-sm font-semibold text-slate-300 mb-2">
-          Courbe de poids
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-300">Courbe de poids</h2>
+          <div className="flex gap-1 bg-slate-800/40 rounded-lg p-0.5">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                  range === r.key
+                    ? "bg-emerald-500 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {fetching ? (
           <div className="text-center py-8 text-slate-500 text-sm">
             Chargement...
